@@ -1,0 +1,90 @@
+package co.ke.kumea.data.repository
+
+import co.ke.kumea.data.auth.TokenStore
+import co.ke.kumea.data.local.KumeaDatabase
+import co.ke.kumea.data.remote.KumeaApi
+import co.ke.kumea.data.remote.dto.AuthResponse
+import co.ke.kumea.data.remote.dto.LoginRequest
+import co.ke.kumea.data.remote.dto.LogoutRequest
+import co.ke.kumea.data.remote.dto.RegisterRequest
+import co.ke.kumea.data.remote.dto.SendOtpRequest
+import co.ke.kumea.data.remote.dto.SendOtpResponse
+import co.ke.kumea.data.remote.dto.VerifyOtpRequest
+import co.ke.kumea.data.remote.dto.VerifyOtpResponse
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.flow.firstOrNull
+import kotlinx.coroutines.withContext
+import javax.inject.Inject
+import javax.inject.Singleton
+
+/**
+ * Wraps the auth endpoints on [KumeaApi] together with [TokenStore] persistence.
+ *
+ * On a successful register/login the access + refresh tokens are saved so
+ * [co.ke.kumea.data.remote.interceptor.AuthInterceptor] attaches them to later
+ * requests. Logout / an invalid session clears tokens AND the local Room cache so
+ * the next signed-in user never sees the previous user's farms.
+ */
+@Singleton
+class AuthRepository @Inject constructor(
+    private val api: KumeaApi,
+    private val tokenStore: TokenStore,
+    private val database: KumeaDatabase,
+) {
+    suspend fun sendOtp(phone: String): SendOtpResponse =
+        api.sendOtp(SendOtpRequest(phone))
+
+    suspend fun verifyOtp(phone: String, code: String): VerifyOtpResponse =
+        api.verifyOtp(VerifyOtpRequest(phone, code))
+
+    suspend fun register(registrationToken: String, pin: String): AuthResponse {
+        val res = api.register(RegisterRequest(registrationToken, pin))
+        tokenStore.saveTokens(res.accessToken, res.refreshToken)
+        return res
+    }
+
+    suspend fun login(phone: String, pin: String): AuthResponse {
+        val res = api.login(LoginRequest(phone, pin))
+        tokenStore.saveTokens(res.accessToken, res.refreshToken)
+        return res
+    }
+
+    /**
+     * Startup check: true if a saved access token is still valid (GET /auth/me 200).
+     * On any failure the local session is cleared so the caller routes to PhoneEntry.
+     */
+    suspend fun isAuthenticated(): Boolean {
+        val token = tokenStore.tokenFlow.firstOrNull()
+        if (token.isNullOrBlank()) return false
+        return try {
+            api.me()
+            true
+        } catch (e: Exception) {
+            clearSession()
+            false
+        }
+    }
+
+    /**
+     * Best-effort server logout, then clear all local state (tokens + Room).
+     * A failed network call must not block the local sign-out.
+     */
+    suspend fun logout() {
+        val refreshToken = tokenStore.refreshTokenFlow.firstOrNull()
+        if (!refreshToken.isNullOrBlank()) {
+            try {
+                api.logout(LogoutRequest(refreshToken))
+            } catch (e: Exception) {
+                // Best-effort only.
+            }
+        }
+        clearSession()
+    }
+
+    private suspend fun clearSession() {
+        tokenStore.clearAll()
+        withContext(Dispatchers.IO) {
+            database.clearAllTables()
+        }
+    }
+}
