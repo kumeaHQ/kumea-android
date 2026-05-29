@@ -1,0 +1,65 @@
+# Built application files
+*.apk
+*.aar
+*.ap_
+*.aab
+
+# Files for the ART/Dalvik VM
+*.dex
+
+# Java class files
+*.class
+
+# Generated files
+bin/
+gen/
+out/
+release/
+
+# Gradle
+.gradle/
+build/
+
+# IntelliJ / Android Studio
+.idea/
+*.iml
+*.iws
+*.ipr
+.idea_modules/
+
+# Local configuration file (sdk path, etc.)
+local.properties
+
+# Keystore files — must never be committed
+*.jks
+*.keystore
+keystore.properties
+
+# Crashlytics / Firebase
+google-services.json
+crashlytics.properties
+crashlytics-build.properties
+
+# Editor / OS junk
+.DS_Store
+.vscode/
+*.swp
+*~
+
+# Logs and reports
+*.log
+captures/
+
+# NDK
+.externalNativeBuild
+.cxx/
+
+# Lint
+lint/intermediates/
+lint/generated/
+lint/outputs/
+lint/tmp/
+lint/reports/
+
+# Kotlin
+.kotlin/

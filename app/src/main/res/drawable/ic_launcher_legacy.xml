@@ -1,0 +1,20 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+    Legacy launcher fallback for API 24-25 (no adaptive icons).
+    Background is baked in here because these versions don't compose foreground
+    over a background; they render the drawable as-is into the launcher cell.
+-->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+    <!-- Brand green background -->
+    <path
+        android:fillColor="#2E7D32"
+        android:pathData="M0,0h108v108h-108z" />
+    <!-- Stylized K letter -->
+    <path
+        android:fillColor="#FFFFFF"
+        android:pathData="M36,24 L36,84 L44,84 L44,58 L60,84 L70,84 L52,55 L70,24 L60,24 L45,51 L44,51 L44,24 Z" />
+</vector>

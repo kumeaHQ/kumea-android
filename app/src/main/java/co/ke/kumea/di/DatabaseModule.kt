@@ -1,0 +1,39 @@
+package co.ke.kumea.di
+
+import android.content.Context
+import androidx.room.Room
+import co.ke.kumea.data.local.FarmDao
+import co.ke.kumea.data.local.KumeaDatabase
+import co.ke.kumea.data.local.SyncConflictDao
+import dagger.Module
+import dagger.Provides
+import dagger.hilt.InstallIn
+import dagger.hilt.android.qualifiers.ApplicationContext
+import dagger.hilt.components.SingletonComponent
+import javax.inject.Singleton
+
+@Module
+@InstallIn(SingletonComponent::class)
+object DatabaseModule {
+
+    @Provides
+    @Singleton
+    fun provideKumeaDatabase(
+        @ApplicationContext context: Context,
+    ): KumeaDatabase = Room.databaseBuilder(
+        context,
+        KumeaDatabase::class.java,
+        DATABASE_NAME,
+    ).fallbackToDestructiveMigration()
+        .build()
+
+    @Provides
+    @Singleton
+    fun provideFarmDao(database: KumeaDatabase): FarmDao = database.farmDao()
+
+    @Provides
+    @Singleton
+    fun provideSyncConflictDao(database: KumeaDatabase): SyncConflictDao = database.syncConflictDao()
+
+    private const val DATABASE_NAME = "kumea.db"
+}

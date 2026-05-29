@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="utf-8"?>
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+    <!--
+        Stylized K letter on transparent background.
+        Adaptive icon background is provided separately via @color/ic_launcher_background
+        so OEM launcher masks (circle, squircle, rounded square) clip correctly.
+    -->
+    <path
+        android:fillColor="#FFFFFF"
+        android:pathData="M36,24 L36,84 L44,84 L44,58 L60,84 L70,84 L52,55 L70,24 L60,24 L45,51 L44,51 L44,24 Z" />
+</vector>

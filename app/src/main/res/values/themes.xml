@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources xmlns:tools="http://schemas.android.com/tools">
+    <!--
+        Base theme. Compose owns the actual app theming via KumeaTheme.
+        This is just the system Activity theme that's active before Compose attaches.
+    -->
+    <style name="Theme.Kumea" parent="android:Theme.Material.Light.NoActionBar">
+        <item name="android:statusBarColor" tools:targetApi="l">@color/ic_launcher_background</item>
+        <item name="android:windowLightStatusBar" tools:targetApi="m">false</item>
+    </style>
+</resources>
