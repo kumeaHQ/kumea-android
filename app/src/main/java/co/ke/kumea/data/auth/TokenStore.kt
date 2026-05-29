@@ -21,9 +21,21 @@ class TokenStore @Inject constructor(
         prefs[TOKEN_KEY]
     }
 
+    val refreshTokenFlow: Flow<String?> = context.dataStore.data.map { prefs ->
+        prefs[REFRESH_TOKEN_KEY]
+    }
+
     suspend fun saveToken(token: String) {
         context.dataStore.edit { prefs ->
             prefs[TOKEN_KEY] = token
+        }
+    }
+
+    /** Persist both tokens together after a successful register/login. */
+    suspend fun saveTokens(accessToken: String, refreshToken: String) {
+        context.dataStore.edit { prefs ->
+            prefs[TOKEN_KEY] = accessToken
+            prefs[REFRESH_TOKEN_KEY] = refreshToken
         }
     }
 
@@ -33,7 +45,16 @@ class TokenStore @Inject constructor(
         }
     }
 
+    /** Clear both access and refresh tokens (logout / invalid session). */
+    suspend fun clearAll() {
+        context.dataStore.edit { prefs ->
+            prefs.remove(TOKEN_KEY)
+            prefs.remove(REFRESH_TOKEN_KEY)
+        }
+    }
+
     companion object {
         private val TOKEN_KEY = stringPreferencesKey("access_token")
+        private val REFRESH_TOKEN_KEY = stringPreferencesKey("refresh_token")
     }
 }
