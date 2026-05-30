@@ -133,3 +133,7 @@ FieldSyncWorker. Do not introduce `SyncableEntity<T>` abstractions.
 - Remote: `origin https://github.com/kumeaHQ/kumea-android.git`
 - `suppressUnsupportedCompileSdk=35` in `gradle.properties`
 - Configuration cache: **disabled** (Hilt + AGP 8.5 rough edges). Re-enable once Sprint 1 is green.
+
+## See Also
+
+- `.claude/second-brain.md` — Claude Code ↔ RB agent coordination contract (Obsidian vault)
