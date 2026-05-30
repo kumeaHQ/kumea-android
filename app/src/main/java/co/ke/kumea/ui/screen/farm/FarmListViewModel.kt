@@ -1,5 +1,6 @@
 package co.ke.kumea.ui.screen.farm
 
+import android.util.Log
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import co.ke.kumea.data.local.FarmEntity
@@ -35,40 +36,46 @@ class FarmListViewModel @Inject constructor(
     private val _loggedOut = MutableStateFlow(false)
     val loggedOut: StateFlow<Boolean> = _loggedOut.asStateFlow()
 
+    private val _errorMessage = MutableStateFlow<String?>(null)
+    val errorMessage: StateFlow<String?> = _errorMessage.asStateFlow()
+
     fun refresh() {
         if (_isRefreshing.value) return
         viewModelScope.launch {
             _isRefreshing.value = true
-            // Push local pending edits up first, then pull server deltas. Both are
-            // best-effort — a sync failure shouldn't crash pull-to-refresh.
-            //
-            // Order matters: farms before fields. A field's CASCADE foreign key
-            // needs its parent farm present locally, so the farm pull must land
-            // first. This is the manual-refresh stand-in for AC 15's "single
-            // worker, farms then fields, one wakeup" — the WorkManager schedule
-            // itself is a deferred follow-up (see FieldSyncWorker).
             try {
                 repository.pushPending()
+                Log.d("Sync", "✅ pushPending farms OK")
             } catch (e: Exception) {
-                // ignore; WorkManager still owns durable retry
+                Log.e("Sync", "❌ pushPending farms: ${e.message}", e)
+                _errorMessage.value = "Farm push failed: ${e.message}"
             }
             try {
                 repository.pullSince()
+                Log.d("Sync", "✅ pullSince farms OK")
             } catch (e: Exception) {
-                // ignore; offline or transient
+                Log.e("Sync", "❌ pullSince farms: ${e.message}", e)
+                if (_errorMessage.value == null) _errorMessage.value = "Farm pull failed: ${e.message}"
             }
             try {
                 fieldRepository.pushPending()
+                Log.d("Sync", "✅ pushPending fields OK")
             } catch (e: Exception) {
-                // ignore; best-effort
+                Log.e("Sync", "❌ pushPending fields: ${e.message}", e)
             }
             try {
                 fieldRepository.pullSince()
+                Log.d("Sync", "✅ pullSince fields OK – fields now in Room")
             } catch (e: Exception) {
-                // ignore; offline or transient
+                Log.e("Sync", "❌ pullSince fields: ${e.message}", e)
+                if (_errorMessage.value == null) _errorMessage.value = "Field pull failed: ${e.message}"
             }
             _isRefreshing.value = false
         }
+    }
+
+    fun onErrorShown() {
+        _errorMessage.value = null
     }
 
     fun logout() {

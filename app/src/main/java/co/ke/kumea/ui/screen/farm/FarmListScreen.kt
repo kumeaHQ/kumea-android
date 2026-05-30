@@ -9,6 +9,7 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
@@ -28,11 +29,21 @@ fun FarmListScreen(
     val farms by viewModel.farms.collectAsStateWithLifecycle()
     val isRefreshing by viewModel.isRefreshing.collectAsStateWithLifecycle()
     val loggedOut by viewModel.loggedOut.collectAsStateWithLifecycle()
+    val errorMessage by viewModel.errorMessage.collectAsStateWithLifecycle()
+
+    val snackbarHostState = remember { SnackbarHostState() }
 
     LaunchedEffect(loggedOut) {
         if (loggedOut) {
             onLoggedOut()
             viewModel.onLoggedOutHandled()
+        }
+    }
+
+    LaunchedEffect(errorMessage) {
+        errorMessage?.let { msg ->
+            snackbarHostState.showSnackbar(msg, duration = SnackbarDuration.Long)
+            viewModel.onErrorShown()
         }
     }
 
@@ -51,7 +62,8 @@ fun FarmListScreen(
             FloatingActionButton(onClick = onAddFarm) {
                 Icon(Icons.Default.Add, contentDescription = "Add Farm")
             }
-        }
+        },
+        snackbarHost = { SnackbarHost(snackbarHostState) },
     ) { padding ->
         PullToRefresh(
             isRefreshing = isRefreshing,
@@ -66,8 +78,6 @@ fun FarmListScreen(
                 verticalArrangement = Arrangement.spacedBy(8.dp)
             ) {
                 if (farms.isEmpty()) {
-                    // A single item keeps the list scrollable so the pull-to-refresh
-                    // gesture still works on the empty state.
                     item {
                         Box(
                             modifier = Modifier
