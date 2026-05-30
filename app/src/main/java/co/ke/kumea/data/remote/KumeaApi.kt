@@ -8,6 +8,9 @@ import co.ke.kumea.data.remote.dto.FieldCreateRequest
 import co.ke.kumea.data.remote.dto.FieldResponse
 import co.ke.kumea.data.remote.dto.FieldUpdateRequest
 import co.ke.kumea.data.remote.dto.HealthResponse
+import co.ke.kumea.data.remote.dto.NoteCreateRequest
+import co.ke.kumea.data.remote.dto.NoteResponse
+import co.ke.kumea.data.remote.dto.NoteUpdateRequest
 import co.ke.kumea.data.remote.dto.LoginRequest
 import co.ke.kumea.data.remote.dto.LogoutRequest
 import co.ke.kumea.data.remote.dto.MessageResponse
@@ -95,4 +98,27 @@ interface KumeaApi {
 
     @DELETE("fields/{id}")
     suspend fun deleteField(@Path("id") id: String): Response<Unit>
+
+    // ---- Notes ----
+    // Flat /notes resource, identical shape to /fields. fieldId travels in the
+    // create body, not the path. amountCents is a String end-to-end (money is
+    // BigInt cents server-side, never a JSON number).
+
+    @GET("notes")
+    suspend fun getNotes(
+        @Query("since") since: String? = null,
+        @Query("includeDeleted") includeDeleted: Boolean = false,
+    ): List<NoteResponse>
+
+    @POST("notes")
+    suspend fun createNote(@Body note: NoteCreateRequest): Response<NoteResponse>
+
+    @PATCH("notes/{id}")
+    suspend fun updateNote(
+        @Path("id") id: String,
+        @Body note: NoteUpdateRequest,
+    ): Response<NoteResponse>
+
+    @DELETE("notes/{id}")
+    suspend fun deleteNote(@Path("id") id: String): Response<Unit>
 }

@@ -5,6 +5,7 @@ import androidx.room.Room
 import co.ke.kumea.data.local.FarmDao
 import co.ke.kumea.data.local.FieldDao
 import co.ke.kumea.data.local.KumeaDatabase
+import co.ke.kumea.data.local.NoteDao
 import co.ke.kumea.data.local.SyncConflictDao
 import dagger.Module
 import dagger.Provides
@@ -35,6 +36,10 @@ object DatabaseModule {
     @Provides
     @Singleton
     fun provideFieldDao(database: KumeaDatabase): FieldDao = database.fieldDao()
+
+    @Provides
+    @Singleton
+    fun provideNoteDao(database: KumeaDatabase): NoteDao = database.noteDao()
 
     @Provides
     @Singleton

@@ -14,6 +14,8 @@ import co.ke.kumea.ui.screen.auth.PinEntryScreen
 import co.ke.kumea.ui.screen.auth.PinSetupScreen
 import co.ke.kumea.ui.screen.farm.FarmCreateScreen
 import co.ke.kumea.ui.screen.farm.FarmListScreen
+import co.ke.kumea.ui.screen.note.NoteCreateScreen
+import co.ke.kumea.ui.screen.note.NoteListScreen
 
 object Routes {
     const val PHONE_ENTRY = "phone_entry"
@@ -22,10 +24,14 @@ object Routes {
     const val PIN_ENTRY = "pin_entry/{phone}"
     const val FARM_LIST = "farms"
     const val FARM_CREATE = "farms/create"
+    const val NOTE_LIST = "farms/{farmId}/notes"
+    const val NOTE_CREATE = "farms/{farmId}/notes/create"
 
     fun otpEntry(phone: String) = "otp_entry/${Uri.encode(phone)}"
     fun pinSetup(registrationToken: String) = "pin_setup/${Uri.encode(registrationToken)}"
     fun pinEntry(phone: String) = "pin_entry/${Uri.encode(phone)}"
+    fun noteList(farmId: String) = "farms/${Uri.encode(farmId)}/notes"
+    fun noteCreate(farmId: String) = "farms/${Uri.encode(farmId)}/notes/create"
 }
 
 @Composable
@@ -82,6 +88,7 @@ fun KumeaNavHost(
         composable(Routes.FARM_LIST) {
             FarmListScreen(
                 onAddFarm = { navController.navigate(Routes.FARM_CREATE) },
+                onOpenFarm = { farmId -> navController.navigate(Routes.noteList(farmId)) },
                 onLoggedOut = {
                     navController.navigate(Routes.PHONE_ENTRY) {
                         popUpTo(0) { inclusive = true }
@@ -91,6 +98,22 @@ fun KumeaNavHost(
         }
         composable(Routes.FARM_CREATE) {
             FarmCreateScreen(onBack = { navController.popBackStack() })
+        }
+        composable(
+            Routes.NOTE_LIST,
+            arguments = listOf(navArgument("farmId") { type = NavType.StringType }),
+        ) { backStackEntry ->
+            val farmId = backStackEntry.arguments?.getString("farmId") ?: return@composable
+            NoteListScreen(
+                onBack = { navController.popBackStack() },
+                onAddNote = { navController.navigate(Routes.noteCreate(farmId)) },
+            )
+        }
+        composable(
+            Routes.NOTE_CREATE,
+            arguments = listOf(navArgument("farmId") { type = NavType.StringType }),
+        ) {
+            NoteCreateScreen(onBack = { navController.popBackStack() })
         }
     }
 }

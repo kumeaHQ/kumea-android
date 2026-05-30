@@ -4,31 +4,46 @@ import co.ke.kumea.data.local.FarmDao
 import co.ke.kumea.data.local.FarmEntity
 import co.ke.kumea.data.local.SyncAction
 import co.ke.kumea.data.local.SyncConflictDao
-import co.ke.kumea.data.remote.KumeaApi
+import co.ke.kumea.data.local.SyncConflictEntity
+import co.ke.kumea.data.remote.FakeKumeaApi
 import co.ke.kumea.data.repository.FarmRepository
-import io.mockk.*
+import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.runBlocking
 import org.junit.Assert.*
 import org.junit.Test
 
+/**
+ * Rewritten mockk-free (Ticket 3.2): the project has no mocking library on the
+ * test classpath, so this uses a plain fake DAO. Same assertion as before —
+ * an offline create lands as a pending CREATE row.
+ */
 class FarmSyncTest {
 
-    private val farmDao = mockk<FarmDao>(relaxed = true)
-    private val syncConflictDao = mockk<SyncConflictDao>(relaxed = true)
-    private val api = mockk<KumeaApi>()
-    private val repository = FarmRepository(farmDao, syncConflictDao, api)
+    private class FakeFarmDao : FarmDao {
+        val upserts = mutableListOf<FarmEntity>()
+        override fun getAllActive(): Flow<List<FarmEntity>> = flowOf(emptyList())
+        override suspend fun getPendingSync(): List<FarmEntity> = emptyList()
+        override suspend fun getLatestUpdatedAt(): String? = null
+        override suspend fun upsertAll(farms: List<FarmEntity>) { upserts.addAll(farms) }
+        override suspend fun upsert(farm: FarmEntity) { upserts.add(farm) }
+        override suspend fun markSynced(farmId: String, serverUpdatedAt: String) {}
+        override suspend fun markSyncedDelete(farmId: String, deletedAt: String) {}
+    }
+
+    private class NoOpConflictDao : SyncConflictDao {
+        override suspend fun insert(conflict: SyncConflictEntity) {}
+    }
 
     @Test
-    fun `test offline create workflow`() = runBlocking {
-        // 1. Arrange: Create a farm locally
-        val farmId = repository.createLocal("Test Farm", 0.0, 0.0, "Rain")
+    fun `offline create marks the row pending`() = runBlocking {
+        val farmDao = FakeFarmDao()
+        val repository = FarmRepository(farmDao, NoOpConflictDao(), FakeKumeaApi())
 
-        // 2. Assert: Verify the DAO was called with pendingSync = true
-        val slot = slot<FarmEntity>()
-        verify { farmDao.upsert(capture(slot)) }
-        assertEquals(true, slot.captured.pendingSync)
-        assertEquals(SyncAction.CREATE, slot.captured.syncAction)
+        repository.createLocal("Test Farm", 0.0, 0.0, "Rain")
 
-        println("Logic test passed: Farm created locally with pendingSync=true")
+        val captured = farmDao.upserts.single()
+        assertEquals(true, captured.pendingSync)
+        assertEquals(SyncAction.CREATE, captured.syncAction)
     }
 }

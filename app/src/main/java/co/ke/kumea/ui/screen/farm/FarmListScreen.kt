@@ -21,6 +21,7 @@ import co.ke.kumea.ui.common.PullToRefresh
 @Composable
 fun FarmListScreen(
     onAddFarm: () -> Unit,
+    onOpenFarm: (String) -> Unit,
     onLoggedOut: () -> Unit,
     viewModel: FarmListViewModel = hiltViewModel()
 ) {
@@ -79,7 +80,7 @@ fun FarmListScreen(
                     }
                 } else {
                     items(farms, key = { it.id }) { farm ->
-                        FarmItem(farm = farm)
+                        FarmItem(farm = farm, onClick = { onOpenFarm(farm.id) })
                     }
                 }
             }
@@ -87,9 +88,11 @@ fun FarmListScreen(
     }
 }
 
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun FarmItem(farm: FarmEntity) {
+fun FarmItem(farm: FarmEntity, onClick: () -> Unit) {
     Card(
+        onClick = onClick,
         modifier = Modifier.fillMaxWidth(),
     ) {
         Row(
