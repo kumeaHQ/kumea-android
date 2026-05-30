@@ -1,122 +1,135 @@
-# CLAUDE.md — Second Brain Integration Contract
+# CLAUDE.md — kumea-android
 
-You are Claude Code, the project execution agent for Kumea. You share a
-persistent state machine with "rb" (the OpenClaw agent) via the Obsidian
-vault at:
+Offline-first farm management app for Kenyan farmers. Android-only (Kotlin +
+Jetpack Compose).
 
-    $HOME/Documents/Obsidian Vault/.second_brain/
+## Stack
 
-## Opening Ritual (every session start)
+| Layer | Choice | Version |
+|-------|--------|---------|
+| Language | Kotlin | 2.0.0 |
+| Build | AGP (Android Gradle Plugin) | 8.13.2 |
+| UI | Jetpack Compose + Material 3 | BOM 2024.09.00 |
+| DI | Hilt | 2.51.1 |
+| Local DB | Room | 2.6.1 |
+| Preferences | DataStore Preferences | 1.1.1 |
+| HTTP | Retrofit + OkHttp | 2.11.0 / 4.12.0 |
+| Serialization | kotlinx.serialization | 1.7.3 |
+| Date/Time | kotlinx-datetime | 0.6.1 |
+| Background | WorkManager | 2.9.0 |
+| Navigation | Navigation Compose | 2.8.1 |
+| Target/Compile SDK | 35 | — |
+| Min SDK | 24 | — |
+| JVM Target | 17 | — |
 
-1. **Atomic write** your timestamp to `state/last-seen-by-claude.md`:
-   ```bash
-   TMP=$(mktemp "state/.tmp-last-seen.XXXXXXXXXX")
-   date -u +"%Y-%m-%dT%H:%M:%SZ" > "$TMP"
-   mv "$TMP" "state/last-seen-by-claude.md"
-   ```
-2. Read `state/active-ticket.md` — this is your primary directive.
-3. Read `state/agent-roster.md` — confirm who owns what.
-4. Read the latest 3 entries in `ledger/` — catch up on rb's work.
-5. Read any ADRs in `decisions/` newer than your last-seen timestamp.
-6. Check `state/messages.md` for anything addressed `to: claude`.
+**Critical:** Retrofit (NOT Ktor). kotlinx-serialization (NOT Gson, NOT Moshi).
+kotlinx-datetime (NOT java.util.Date). The Sprint 0 retro explicitly records
+these choices.
 
-## Messages Protocol (read-receipt)
+## Build & Run
 
-When you read a message from `state/messages.md`:
-1. Read the message contents.
-2. After acting, insert a `processed: YYYY-MM-DDTHH:MM:SSZ` line right
-   after the closing `---` of that message block.
-3. The consolidation script checks processed count vs message count.
-   If they match, we're clean.
+```bash
+./gradlew assembleDebug        # build debug APK
+./gradlew installDebug          # install on connected device
+./gradlew test                  # unit tests
+./gradlew lint                  # lint (requires network — JVM 17 must be configured)
 
-If you need to write a message for rb:
-```markdown
----
-to: rb
-from: claude
----
-
-Message here...
+# APK output: app/build/outputs/apk/debug/app-debug.apk
+# NOT the intermediate APK at intermediates/apk/debug/ (unsigned)
 ```
 
-## Working Contract
+## Project Structure
 
-### You OWN:
-- Code generation, refactoring, debugging
-- PR creation, git pushes
-- Architecture implementation
-- Test writing
-
-### rb OWNS:
-- WhatsApp/messaging (farmers, dealers, partners)
-- Obsidian vault content
-- Strategy documents, grant research
-- Business operations (invoicing, follow-ups)
-
-### Shared:
-- `state/active-ticket.md` — both update this when starting/blocking/completing work
-- `state/messages.md` — cross-agent async coordination
-- `ledger/` — both append entries for durable cross-session memory
-
-## Ledger Entry Format (MUST follow exactly)
-
-Every ledger entry must use this exact structure. The consolidation script
-parses these sections programmatically — deviations produce silent failures.
-
-```markdown
-# [2026-05-24 17:00:00 EAT]
-
-## Agent
-claude
-
-## Session Summary
-One paragraph. What happened, why, what's next.
-
-## Decisions
-- **Decision title**: Description. Rationale: why. Impact: effect.
-  ALL decision bullets MUST start with "- **Title**:". Lines starting with
-  "- " but not "- **" are silently ignored by the consolidation script.
-  Multi-line: continuation lines should NOT start with "-".
-
-## State Changes
-- `state/active-ticket.md`: Changed from "old value" to "new value"
-  The consolidation script extracts active-ticket changes by parsing
-  "from X to Y". Stick to this exact phrasing for clean state updates.
-  Other state files: just describe what changed.
-
-## Next Actions
-- [ ] agent-name: action description
-  Use [ ] for open, [x] for completed. Prefix with the target agent.
-
-## Data Referenced
-- paths to files read this session
+```
+app/src/main/java/co/ke/kumea/
+  MainActivity.kt              # Entry point, splash → nav graph
+  KumeaApplication.kt          # Hilt app + WorkManager config
+  data/
+    auth/TokenStore.kt         # DataStore: access_token, refresh_token
+    local/                     # Room: FarmEntity, FarmDao, SyncConflictEntity, KumeaDatabase
+    remote/                    # Retrofit: KumeaApi, DTOs, AuthInterceptor
+    repository/                # AuthRepository, FarmRepository, HealthRepository
+    sync/FarmSyncWorker.kt     # WorkManager: pushPending → pullSince
+  di/                          # Hilt modules: Network, Database, DataStore
+  ui/
+    navigation/                # KumeaNavHost, StartupViewModel, Routes
+    screen/auth/               # PhoneEntry, OtpEntry, PinSetup, PinEntry
+    screen/farm/               # FarmList, FarmCreate
+    theme/                     # Color, Theme, Type
+    common/PullToRefresh.kt
 ```
 
-There is no need to write sections that have nothing to report. If there
-were no decisions this session, omit the ## Decisions section entirely.
+## Architecture Decisions
 
-## Exit Ritual (before session ends)
+### Offline-first sync (the critical pattern)
 
-1. Update `state/active-ticket.md` with current progress (atomic write, see below).
-2. Write a ledger entry using the format above if you made any significant changes.
+1. User creates entity offline → Room insert with `pendingSync=true`, client-generated UUID
+2. Entity appears in UI immediately (no spinner)
+3. WorkManager detects connectivity → pushPending() then pullSince()
+4. Server: idempotent on UUID, conflict detection via `updatedAt` comparison
+5. 409 → server wins, local discarded, conflict logged to `audit_sync_conflicts`
 
-## Bypass Instructions
+### Auth flow
 
-Do NOT re-explore the codebase from scratch every session.
+- **Registration:** phone → OTP → verify → PIN setup → tokens saved → FarmList
+- **Login (existing):** phone → PIN → tokens saved → FarmList
+- **Returning (token saved):** GET /auth/me → 200 → FarmList (skip auth screens)
+- **Returning (token expired):** GET /auth/me → 401 → clear session → PhoneEntry
 
-1. Start from `ledger/` — last 3 files tells you what happened.
-2. Read `state/active-ticket.md` — confirms what to do.
-3. Only read source files you actually need to change.
+### Token strategy
 
-Realistic saving: ~5–10K tokens per session startup. Still worth it.
+- Access token: JWT, short-lived, stored in DataStore
+- Refresh token: opaque, rotated on use
+- `AuthInterceptor` attaches `Authorization: Bearer <token>` to all requests
+- `runBlocking` in interceptor is intentional — OkHttp interceptors are synchronous
 
-## Critical Rules
+### Critical rule — AC22 fix (May 29, 2026)
 
-- If `state/active-ticket.md` is empty or missing: ASK Marcus before doing anything.
-- If a decision in `state/decisions/` conflicts with your instinct: flag it in
-  `messages.md` before overriding.
-- Never delete a `ledger/` file. Append-only is sacred.
-- When writing `state/` files: write to a temp file first, then `mv` into place.
-  This prevents the other agent from reading a truncated file.
-- The `.second_brain/` directory is the source of truth. If something is in the
-  ledger but not in your context, treat it as pending work.
+**Only HTTP 401 clears the session.** Network errors, timeouts, 5xx must NEVER
+clear tokens. `AuthRepository.isAuthenticated()` three-branch pattern:
+```
+200 → authenticated
+401 → clear session → login
+any other error → proceed with cached state (return true)
+```
+
+If you find `catch (Exception) { clearSession() }` anywhere, flag it immediately.
+
+### Sync conflict resolution
+
+- Last-write-wins, server-authoritative
+- Client sends `updatedAt` in write requests
+- Server compares: stale `updatedAt` → 409
+- Rejected payload saved to `audit_sync_conflicts`
+
+### No generics in sync workers
+
+FarmSyncWorker is concrete, not generic. Field sync in Sprint 1 gets its own
+FieldSyncWorker. Do not introduce `SyncableEntity<T>` abstractions.
+
+## Units & Conventions
+
+| Concept | Type | Notes |
+|---------|------|-------|
+| Money | `BigInt` (cents) | KES, divide by 100 for display |
+| Area | `Decimal(10, 4)` | Acres to 4 decimal places |
+| Percentage | `Decimal(5, 4)` | 0.0000–1.0000, multiply by 100 for display |
+| Timestamps | UTC in DB, EAT (UTC+3) display | Use `kotlinx-datetime` |
+| IDs | UUID v4 | Client-generated for mutable entities |
+| Phone numbers | E.164 `String` | Normalized to `+254…` |
+| Soft deletes | `deletedAt` column | Queries filter `WHERE deletedAt IS NULL` |
+
+## Naming Conventions
+
+- Package: `co.ke.kumea`
+- ViewModels: `*ViewModel` suffix, `@HiltViewModel`
+- Repositories: `*Repository` suffix, `@Singleton`
+- DTOs in `data/remote/dto/` package
+- Screen composables in `ui/screen/<feature>/`
+- One file per screen + one per ViewModel
+
+## Git
+
+- Remote: `origin https://github.com/kumeaHQ/kumea-android.git`
+- `suppressUnsupportedCompileSdk=35` in `gradle.properties`
+- Configuration cache: **disabled** (Hilt + AGP 8.5 rough edges). Re-enable once Sprint 1 is green.
