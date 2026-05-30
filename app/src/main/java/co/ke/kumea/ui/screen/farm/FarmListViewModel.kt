@@ -5,6 +5,7 @@ import androidx.lifecycle.viewModelScope
 import co.ke.kumea.data.local.FarmEntity
 import co.ke.kumea.data.repository.AuthRepository
 import co.ke.kumea.data.repository.FarmRepository
+import co.ke.kumea.data.repository.FieldRepository
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
@@ -17,6 +18,7 @@ import javax.inject.Inject
 @HiltViewModel
 class FarmListViewModel @Inject constructor(
     private val repository: FarmRepository,
+    private val fieldRepository: FieldRepository,
     private val authRepository: AuthRepository,
 ) : ViewModel() {
 
@@ -39,6 +41,12 @@ class FarmListViewModel @Inject constructor(
             _isRefreshing.value = true
             // Push local pending edits up first, then pull server deltas. Both are
             // best-effort — a sync failure shouldn't crash pull-to-refresh.
+            //
+            // Order matters: farms before fields. A field's CASCADE foreign key
+            // needs its parent farm present locally, so the farm pull must land
+            // first. This is the manual-refresh stand-in for AC 15's "single
+            // worker, farms then fields, one wakeup" — the WorkManager schedule
+            // itself is a deferred follow-up (see FieldSyncWorker).
             try {
                 repository.pushPending()
             } catch (e: Exception) {
@@ -46,6 +54,16 @@ class FarmListViewModel @Inject constructor(
             }
             try {
                 repository.pullSince()
+            } catch (e: Exception) {
+                // ignore; offline or transient
+            }
+            try {
+                fieldRepository.pushPending()
+            } catch (e: Exception) {
+                // ignore; best-effort
+            }
+            try {
+                fieldRepository.pullSince()
             } catch (e: Exception) {
                 // ignore; offline or transient
             }

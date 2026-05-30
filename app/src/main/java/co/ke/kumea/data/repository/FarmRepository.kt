@@ -160,7 +160,7 @@ class FarmRepository @Inject constructor(
     suspend fun pullSince() {
         val since = farmDao.getLatestUpdatedAt()
         val serverFarms = try {
-            api.getFarms(since = since)
+            api.getFarms(since = since, includeDeleted = true)
         } catch (e: Exception) {
             // Network error — WorkManager will retry
             throw e

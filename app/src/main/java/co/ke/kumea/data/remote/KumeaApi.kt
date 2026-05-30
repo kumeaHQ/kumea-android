@@ -4,6 +4,9 @@ import co.ke.kumea.data.remote.dto.AuthResponse
 import co.ke.kumea.data.remote.dto.FarmCreateRequest
 import co.ke.kumea.data.remote.dto.FarmResponse
 import co.ke.kumea.data.remote.dto.FarmUpdateRequest
+import co.ke.kumea.data.remote.dto.FieldCreateRequest
+import co.ke.kumea.data.remote.dto.FieldResponse
+import co.ke.kumea.data.remote.dto.FieldUpdateRequest
 import co.ke.kumea.data.remote.dto.HealthResponse
 import co.ke.kumea.data.remote.dto.LoginRequest
 import co.ke.kumea.data.remote.dto.LogoutRequest
@@ -70,4 +73,26 @@ interface KumeaApi {
 
     @DELETE("farms/{id}")
     suspend fun deleteFarm(@Path("id") id: String): Response<Unit>
+
+    // ---- Fields ----
+    // Flat /fields resource, identical shape to /farms. farmId travels in the
+    // create body, not the path. acres is a String end-to-end.
+
+    @GET("fields")
+    suspend fun getFields(
+        @Query("since") since: String? = null,
+        @Query("includeDeleted") includeDeleted: Boolean = false,
+    ): List<FieldResponse>
+
+    @POST("fields")
+    suspend fun createField(@Body field: FieldCreateRequest): Response<FieldResponse>
+
+    @PATCH("fields/{id}")
+    suspend fun updateField(
+        @Path("id") id: String,
+        @Body field: FieldUpdateRequest,
+    ): Response<FieldResponse>
+
+    @DELETE("fields/{id}")
+    suspend fun deleteField(@Path("id") id: String): Response<Unit>
 }
