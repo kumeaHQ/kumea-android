@@ -7,7 +7,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
@@ -42,7 +42,7 @@ fun PullToRefresh(
     val density = LocalDensity.current
     val thresholdPx = with(density) { 72.dp.toPx() }
     val maxPullPx = thresholdPx * 1.6f
-    var pull by remember { mutableStateOf(0f) }
+    var pull by remember { mutableFloatStateOf(0f) }
 
     val connection = remember(isRefreshing, thresholdPx, maxPullPx) {
         object : NestedScrollConnection {
