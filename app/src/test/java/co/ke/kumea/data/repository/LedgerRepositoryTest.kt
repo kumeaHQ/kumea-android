@@ -1,6 +1,8 @@
 package co.ke.kumea.data.repository
 
+import co.ke.kumea.data.local.CostCategory
 import co.ke.kumea.data.remote.FakeKumeaApi
+import co.ke.kumea.data.remote.dto.CostCategoryLineResponse
 import co.ke.kumea.data.remote.dto.FarmLedgerResponse
 import co.ke.kumea.data.remote.dto.FieldLedgerLineResponse
 import co.ke.kumea.data.remote.dto.FieldLedgerResponse
@@ -71,5 +73,57 @@ class LedgerRepositoryTest {
         @Suppress("DEPRECATION")
         val viaDouble = aboveTwo53Wire.toDouble().toLong()
         assertNotEquals(aboveTwo53, viaDouble)
+    }
+
+    // ── Ticket 2.1: byCostCategory ────────────────────────────────────────────
+
+    @Test
+    fun `farm ledger parses byCostCategory to enum + signed Long, incl the uncategorised bucket`() = runBlocking {
+        val api = object : FakeKumeaApi() {
+            override suspend fun getFarmLedger(farmId: String) = FarmLedgerResponse(
+                farmId = farmId,
+                currency = "KES",
+                totalRevenueCents = "0",
+                totalCostCents = "290000",
+                netCents = "-290000",
+                byCostCategory = listOf(
+                    CostCategoryLineResponse("SEED", "200000"),
+                    CostCategoryLineResponse("FERTILISER", "50000"),
+                    CostCategoryLineResponse(null, "40000"), // uncategorised bucket
+                ),
+            )
+        }
+        val repository = LedgerRepository(api)
+
+        val ledger = repository.getFarmLedger("farm-1")
+
+        assertEquals(3, ledger.byCostCategory.size)
+        assertEquals(CostCategory.SEED, ledger.byCostCategory[0].category)
+        assertEquals(200000L, ledger.byCostCategory[0].costCents)
+        // null category = uncategorised, cents still a signed Long.
+        assertEquals(null, ledger.byCostCategory[2].category)
+        assertEquals(40000L, ledger.byCostCategory[2].costCents)
+        // The breakdown reconciles to the cost total.
+        assertEquals(290000L, ledger.byCostCategory.sumOf { it.costCents })
+    }
+
+    @Test
+    fun `field ledger parses a byCostCategory bucket above 2^53 to the exact Long`() = runBlocking {
+        val api = object : FakeKumeaApi() {
+            override suspend fun getFieldLedger(fieldId: String) = FieldLedgerResponse(
+                fieldId = fieldId,
+                fieldName = "Bumper",
+                currency = "KES",
+                totalRevenueCents = "0",
+                totalCostCents = aboveTwo53Wire,
+                netCents = "-$aboveTwo53Wire",
+                byCostCategory = listOf(CostCategoryLineResponse("SEED", aboveTwo53Wire)),
+            )
+        }
+        val repository = LedgerRepository(api)
+
+        val ledger = repository.getFieldLedger("field-1")
+
+        assertEquals(aboveTwo53, ledger.byCostCategory.single().costCents)
     }
 }

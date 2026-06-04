@@ -19,6 +19,9 @@ data class FarmLedgerResponse(
     val totalCostCents: String,
     val netCents: String,
     val byField: List<FieldLedgerLineResponse> = emptyList(),
+    // Farm-wide cost split (Ticket 2.1). Sums to totalCostCents. Defaulted so an
+    // older server that omits it still deserializes cleanly.
+    val byCostCategory: List<CostCategoryLineResponse> = emptyList(),
 )
 
 /** One field's line in a farm rollup. Cents are Strings — see FarmLedgerResponse. */
@@ -29,4 +32,16 @@ data class FieldLedgerLineResponse(
     val revenueCents: String,
     val costCents: String,
     val netCents: String,
+)
+
+/**
+ * One cost-category bucket of a P&L rollup (Ticket 2.1). `category` is the
+ * CostCategory enum name, or null for the uncategorised bucket. costCents is a
+ * String on the wire (the money contract) — parsed to a signed Long in
+ * LedgerRepository, never via Double.
+ */
+@Serializable
+data class CostCategoryLineResponse(
+    val category: String? = null,
+    val costCents: String,
 )

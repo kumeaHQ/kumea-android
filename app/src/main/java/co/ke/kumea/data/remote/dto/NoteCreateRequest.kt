@@ -16,5 +16,7 @@ data class NoteCreateRequest(
     val type: String,
     val body: String,
     val amountCents: String? = null,
+    // Optional cost label (Ticket 2.1) — the CostCategory enum name, or null.
+    val costCategory: String? = null,
     val occurredAt: String,
 )

@@ -7,6 +7,7 @@ import androidx.room.RoomDatabase
  * Ticket 2.2: FarmEntity replaces PlaceholderEntity.
  * Ticket 3.1: FieldEntity added (version 2 → 3).
  * Ticket 3.2: NoteEntity added (version 3 → 4).
+ * Ticket 2.1: NoteEntity.costCategory column added (version 4 → 5).
  *
  * fallbackToDestructiveMigration() is safe here — no real users yet, and
  * the Sprint 0 schema contains only development/seed data. A proper migration
@@ -14,7 +15,7 @@ import androidx.room.RoomDatabase
  */
 @Database(
     entities = [FarmEntity::class, FieldEntity::class, NoteEntity::class, SyncConflictEntity::class],
-    version = 4,
+    version = 5,
     exportSchema = true,
 )
 abstract class KumeaDatabase : RoomDatabase() {

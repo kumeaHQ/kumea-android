@@ -1,6 +1,8 @@
 package co.ke.kumea.data.repository
 
+import co.ke.kumea.data.local.CostCategory
 import co.ke.kumea.data.remote.KumeaApi
+import co.ke.kumea.data.remote.dto.CostCategoryLineResponse
 import javax.inject.Inject
 import javax.inject.Singleton
 
@@ -38,6 +40,7 @@ class LedgerRepository @Inject constructor(
                     netCents = line.netCents.toLong(),
                 )
             },
+            byCostCategory = dto.byCostCategory.map(::toCostLine),
         )
     }
 
@@ -51,8 +54,22 @@ class LedgerRepository @Inject constructor(
             revenueCents = dto.totalRevenueCents.toLong(),
             costCents = dto.totalCostCents.toLong(),
             netCents = dto.netCents.toLong(),
+            byCostCategory = dto.byCostCategory.map(::toCostLine),
         )
     }
+
+    /**
+     * Wire cost-category line → domain. costCents parses to a signed Long (never
+     * Double). A null category is the uncategorised bucket; a non-null name maps
+     * to the enum 1:1 (the enums are kept in lockstep with the API per Ticket
+     * 2.1, same as NoteType — an unknown name is a coordinated-change failure,
+     * not silently swallowed).
+     */
+    private fun toCostLine(dto: CostCategoryLineResponse): CostCategoryLine =
+        CostCategoryLine(
+            category = dto.category?.let { CostCategory.valueOf(it) },
+            costCents = dto.costCents.toLong(),
+        )
 }
 
 /** A farm's rollup with cents as signed Longs (parsed once, here). */
@@ -63,6 +80,7 @@ data class FarmLedger(
     val costCents: Long,
     val netCents: Long,
     val byField: List<FieldLedgerLine>,
+    val byCostCategory: List<CostCategoryLine> = emptyList(),
 )
 
 data class FieldLedgerLine(
@@ -80,4 +98,14 @@ data class FieldLedger(
     val revenueCents: Long,
     val costCents: Long,
     val netCents: Long,
+    val byCostCategory: List<CostCategoryLine> = emptyList(),
+)
+
+/**
+ * One cost-category bucket with cents as a signed Long. `category` is null for
+ * the uncategorised bucket (Ticket 2.1).
+ */
+data class CostCategoryLine(
+    val category: CostCategory?,
+    val costCents: Long,
 )

@@ -17,6 +17,8 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import co.ke.kumea.data.local.CostCategory
+import co.ke.kumea.data.repository.CostCategoryLine
 import co.ke.kumea.data.repository.FarmLedger
 import co.ke.kumea.data.repository.FieldLedgerLine
 import co.ke.kumea.ui.common.PullToRefresh
@@ -126,8 +128,45 @@ private fun LedgerContent(
                 FieldLine(line)
             }
         }
+
+        // Cost breakdown by category (Ticket 2.1). Server-derived and ordered;
+        // the buckets sum to the Costs total above. Only shown when there are costs.
+        if (ledger.byCostCategory.isNotEmpty()) {
+            item {
+                Text(
+                    "Costs by category",
+                    style = MaterialTheme.typography.titleSmall,
+                    modifier = Modifier.padding(top = 4.dp),
+                )
+            }
+            item { CostCategoryCard(ledger.byCostCategory) }
+        }
     }
 }
+
+@Composable
+private fun CostCategoryCard(lines: List<CostCategoryLine>) {
+    Card(modifier = Modifier.fillMaxWidth()) {
+        Column(
+            modifier = Modifier
+                .padding(16.dp)
+                .fillMaxWidth(),
+            verticalArrangement = Arrangement.spacedBy(4.dp),
+        ) {
+            lines.forEach { line ->
+                TotalRow(
+                    label = categoryLabel(line.category),
+                    amount = Money.formatCents(line.costCents),
+                    amountColor = MaterialTheme.colorScheme.error,
+                )
+            }
+        }
+    }
+}
+
+/** Display label for a cost category; null is the uncategorised bucket. */
+private fun categoryLabel(category: CostCategory?): String =
+    category?.name?.lowercase()?.replaceFirstChar { it.uppercase() } ?: "Uncategorised"
 
 @Composable
 private fun HeadlineCard(ledger: FarmLedger) {

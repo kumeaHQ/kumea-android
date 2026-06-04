@@ -1,5 +1,6 @@
 package co.ke.kumea.data.repository
 
+import co.ke.kumea.data.local.CostCategory
 import co.ke.kumea.data.local.NoteDao
 import co.ke.kumea.data.local.NoteEntity
 import co.ke.kumea.data.local.NoteType
@@ -52,6 +53,7 @@ class NoteRepository @Inject constructor(
         body: String,
         amountCents: Long?,
         occurredAt: String,
+        costCategory: CostCategory? = null,
     ): String {
         val now = Clock.System.now().toString()
         val id = UUID.randomUUID().toString()
@@ -61,6 +63,7 @@ class NoteRepository @Inject constructor(
             type = type,
             body = body,
             amountCents = amountCents,
+            costCategory = costCategory,
             occurredAt = occurredAt,
             createdAt = now,
             updatedAt = now,
@@ -83,6 +86,7 @@ class NoteRepository @Inject constructor(
         body: String?,
         amountCents: Long?,
         occurredAt: String?,
+        costCategory: CostCategory? = null,
     ) {
         val now = Clock.System.now().toString()
         var note = noteDao.getPendingSync().find { it.id == id }
@@ -91,6 +95,7 @@ class NoteRepository @Inject constructor(
             type = type ?: note.type,
             body = body ?: note.body,
             amountCents = amountCents ?: note.amountCents,
+            costCategory = costCategory ?: note.costCategory,
             occurredAt = occurredAt ?: note.occurredAt,
             updatedAt = now,
             pendingSync = true,
@@ -131,6 +136,8 @@ class NoteRepository @Inject constructor(
                                 body = note.body,
                                 // Long → wire String. Null stays null (ACTIVITY w/o cost).
                                 amountCents = note.amountCents?.toString(),
+                                // Enum → wire String (the name). Null = uncategorised.
+                                costCategory = note.costCategory?.name,
                                 occurredAt = note.occurredAt,
                             )
                         )
@@ -150,6 +157,7 @@ class NoteRepository @Inject constructor(
                                 type = note.type.name,
                                 body = note.body,
                                 amountCents = note.amountCents?.toString(),
+                                costCategory = note.costCategory?.name,
                                 occurredAt = note.occurredAt,
                                 updatedAt = note.updatedAt,
                             )
@@ -207,6 +215,8 @@ class NoteRepository @Inject constructor(
                 body = server.body,
                 // wire String → Long. Never Double.
                 amountCents = server.amountCents?.toLong(),
+                // wire String → enum (by name); null stays uncategorised.
+                costCategory = server.costCategory?.let { CostCategory.valueOf(it) },
                 occurredAt = server.occurredAt,
                 createdAt = server.createdAt,
                 updatedAt = server.updatedAt,

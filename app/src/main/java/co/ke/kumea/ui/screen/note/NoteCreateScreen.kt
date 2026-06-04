@@ -19,11 +19,12 @@ import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import co.ke.kumea.data.local.CostCategory
 import co.ke.kumea.data.local.NoteType
 import co.ke.kumea.util.Money
 import kotlinx.datetime.Instant
 
-@OptIn(ExperimentalMaterial3Api::class)
+@OptIn(ExperimentalMaterial3Api::class, ExperimentalLayoutApi::class)
 @Composable
 fun NoteCreateScreen(
     onBack: () -> Unit,
@@ -133,6 +134,22 @@ fun NoteCreateScreen(
                 },
                 modifier = Modifier.fillMaxWidth(),
             )
+
+            // ── Cost category (optional, costs only) ───────────────────────
+            // Hidden for a SALE (revenue has no cost category). Tapping the
+            // selected chip clears it — the label is entirely optional.
+            if (state.showCategory) {
+                Text("Cost category (optional)", style = MaterialTheme.typography.labelLarge)
+                FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    CostCategory.entries.forEach { category ->
+                        FilterChip(
+                            selected = state.costCategory == category,
+                            onClick = { viewModel.onCategoryChange(category) },
+                            label = { Text(category.label()) },
+                        )
+                    }
+                }
+            }
 
             // ── Date (occurredAt) ──────────────────────────────────────────
             Box {

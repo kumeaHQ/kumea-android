@@ -1,5 +1,6 @@
 package co.ke.kumea.data.sync
 
+import co.ke.kumea.data.local.CostCategory
 import co.ke.kumea.data.local.NoteDao
 import co.ke.kumea.data.local.NoteEntity
 import co.ke.kumea.data.local.NoteType
@@ -120,5 +121,55 @@ class NoteSyncTest {
         repository.pullSince()
 
         assertEquals(aboveTwo53, dao.upsertAlls.single().single().amountCents)
+    }
+
+    // ── Ticket 2.1: costCategory crosses the wire as the enum name ────────────
+
+    @Test
+    fun `offline create stores the cost category, then push sends it as the enum name`() = runBlocking {
+        val dao = FakeNoteDao()
+        var sent: NoteCreateRequest? = null
+        val api = object : FakeKumeaApi() {
+            override suspend fun createNote(note: NoteCreateRequest): Response<NoteResponse> {
+                sent = note
+                return Response.success(noteResponse("50000", updatedAt = "t2"))
+            }
+        }
+        val repository = NoteRepository(dao, NoOpConflictDao(), api)
+
+        repository.createLocal(
+            fieldId = "field-1",
+            type = NoteType.PURCHASE,
+            body = "DAP fertiliser",
+            amountCents = 50000L,
+            occurredAt = "2026-05-30T00:00:00Z",
+            costCategory = CostCategory.FERTILISER,
+        )
+        val stored = dao.upserts.single()
+        assertEquals(CostCategory.FERTILISER, stored.costCategory)
+
+        // Push the stored note: the category travels as its enum name.
+        dao.pending = listOf(stored)
+        repository.pushPending()
+        assertEquals("FERTILISER", sent?.costCategory)
+    }
+
+    @Test
+    fun `pull parses costCategory back to the enum, a null stays uncategorised`() = runBlocking {
+        val dao = FakeNoteDao()
+        val api = object : FakeKumeaApi() {
+            override suspend fun getNotes(since: String?, includeDeleted: Boolean): List<NoteResponse> =
+                listOf(
+                    noteResponse("50000").copy(id = "labour", costCategory = "LABOUR"),
+                    noteResponse(null).copy(id = "none", type = "ACTIVITY", costCategory = null),
+                )
+        }
+        val repository = NoteRepository(dao, NoOpConflictDao(), api)
+
+        repository.pullSince()
+
+        val pulled = dao.upsertAlls.single()
+        assertEquals(CostCategory.LABOUR, pulled.first { it.id == "labour" }.costCategory)
+        assertEquals(null, pulled.first { it.id == "none" }.costCategory)
     }
 }

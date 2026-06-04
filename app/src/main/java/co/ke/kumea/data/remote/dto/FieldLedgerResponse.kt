@@ -16,4 +16,7 @@ data class FieldLedgerResponse(
     val totalRevenueCents: String,
     val totalCostCents: String,
     val netCents: String,
+    // This field's cost split (Ticket 2.1). Sums to totalCostCents. Defaulted so
+    // an older server that omits it still deserializes cleanly.
+    val byCostCategory: List<CostCategoryLineResponse> = emptyList(),
 )
