@@ -3,6 +3,7 @@ package co.ke.kumea.ui.screen.farm
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import co.ke.kumea.data.repository.FarmRepository
+import co.ke.kumea.data.repository.FieldRepository
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -23,6 +24,7 @@ data class FarmUiState(
 @HiltViewModel
 class FarmDetailViewModel @Inject constructor(
     private val repository: FarmRepository,
+    private val fieldRepository: FieldRepository,
 ) : ViewModel() {
 
     private val _uiState = MutableStateFlow(FarmUiState())
@@ -54,11 +56,19 @@ class FarmDetailViewModel @Inject constructor(
         _uiState.update { it.copy(isSaving = true, error = null) }
         viewModelScope.launch {
             try {
-                repository.createLocal(
+                val farmId = repository.createLocal(
                     name = state.name,
                     locationLat = state.lat.toDoubleOrNull(),
                     locationLng = state.lng.toDoubleOrNull(),
                     waterSource = state.waterSource.ifBlank { null }
+                )
+                // Auto-create a "Main field" so the farm has at least one field
+                // for notes. Without this, a new farm has no field picker option.
+                fieldRepository.createLocal(
+                    farmId = farmId,
+                    name = "Main field",
+                    acres = "1.0",
+                    cropType = null,
                 )
                 onSuccess()
             } catch (e: Exception) {
