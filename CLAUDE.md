@@ -151,6 +151,17 @@ the build before.
 - `suppressUnsupportedCompileSdk=35` in `gradle.properties`
 - Configuration cache: **disabled** (Hilt + AGP 8.5 rough edges). Re-enable once Sprint 1 is green.
 
+## Active Ticket
+
+**Ticket 2.2 — Extract Sync Abstraction** (full spec at `.claude/ticket-2.2.md`)
+
+FarmSyncWorker, FieldSyncWorker, and NoteSyncWorker are identical copies (28 lines each).
+FarmRepository, FieldRepository, and NoteRepository all expose the same `pushPending()` +
+`pullSince()` contract. Extract a `SyncableRepository` interface + single `SyncWorker`
+with Hilt multibindings (`Set<SyncableRepository>`). Delete the three concrete workers.
+Repository bodies, entity classes, DTOs — NO changes.
+
+
 ## See Also
 
 - `.claude/second-brain.md` — Claude Code ↔ RB agent coordination contract (Obsidian vault)
