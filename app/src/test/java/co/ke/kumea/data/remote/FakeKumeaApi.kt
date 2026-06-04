@@ -3,8 +3,10 @@ package co.ke.kumea.data.remote
 import co.ke.kumea.data.remote.dto.AuthResponse
 import co.ke.kumea.data.remote.dto.FarmCreateRequest
 import co.ke.kumea.data.remote.dto.FarmResponse
+import co.ke.kumea.data.remote.dto.FarmLedgerResponse
 import co.ke.kumea.data.remote.dto.FarmUpdateRequest
 import co.ke.kumea.data.remote.dto.FieldCreateRequest
+import co.ke.kumea.data.remote.dto.FieldLedgerResponse
 import co.ke.kumea.data.remote.dto.FieldResponse
 import co.ke.kumea.data.remote.dto.FieldUpdateRequest
 import co.ke.kumea.data.remote.dto.HealthResponse
@@ -57,4 +59,7 @@ open class FakeKumeaApi : KumeaApi {
     override suspend fun createNote(note: NoteCreateRequest): Response<NoteResponse> = nope()
     override suspend fun updateNote(id: String, note: NoteUpdateRequest): Response<NoteResponse> = nope()
     override suspend fun deleteNote(id: String): Response<Unit> = nope()
+
+    override suspend fun getFarmLedger(farmId: String): FarmLedgerResponse = nope()
+    override suspend fun getFieldLedger(fieldId: String): FieldLedgerResponse = nope()
 }

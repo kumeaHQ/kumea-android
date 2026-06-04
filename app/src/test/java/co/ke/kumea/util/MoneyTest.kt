@@ -49,6 +49,17 @@ class MoneyTest {
     }
 
     @Test
+    fun `formats negative cents for a P and L loss (Ticket 3-3)`() {
+        // The ledger's net can be a loss. The fractional part must not go
+        // negative — the bug being guarded is "-1,200.-50".
+        assertEquals("KES -1,200.00", Money.formatCents(-120000L))
+        assertEquals("KES -1,200.50", Money.formatCents(-120050L))
+        assertEquals("KES -0.05", Money.formatCents(-5L))
+        // A negative total above 2^53 still formats byte-for-byte.
+        assertEquals("KES -90,071,992,547,409.93", Money.formatCents(-9007199254740993L))
+    }
+
+    @Test
     fun `round-trips parse - format above 2^53`() {
         val cents = Money.parseToCents("90071992547409.93")!!
         assertEquals(9007199254740993L, cents)

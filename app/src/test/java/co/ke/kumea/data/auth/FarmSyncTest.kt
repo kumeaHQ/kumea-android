@@ -23,6 +23,7 @@ class FarmSyncTest {
     private class FakeFarmDao : FarmDao {
         val upserts = mutableListOf<FarmEntity>()
         override fun getAllActive(): Flow<List<FarmEntity>> = flowOf(emptyList())
+        override suspend fun getAllIds(): List<String> = emptyList()
         override suspend fun getPendingSync(): List<FarmEntity> = emptyList()
         override suspend fun getLatestUpdatedAt(): String? = null
         override suspend fun upsertAll(farms: List<FarmEntity>) { upserts.addAll(farms) }

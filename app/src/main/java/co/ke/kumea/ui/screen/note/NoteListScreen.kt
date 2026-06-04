@@ -28,6 +28,7 @@ import co.ke.kumea.util.Money
 fun NoteListScreen(
     onBack: () -> Unit,
     onAddNote: () -> Unit,
+    onOpenLedger: () -> Unit,
     viewModel: NoteListViewModel = hiltViewModel(),
 ) {
     val notes by viewModel.notes.collectAsStateWithLifecycle()
@@ -50,6 +51,11 @@ fun NoteListScreen(
                 navigationIcon = {
                     IconButton(onClick = onBack) {
                         Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back")
+                    }
+                },
+                actions = {
+                    TextButton(onClick = onOpenLedger) {
+                        Text("P&L")
                     }
                 },
             )

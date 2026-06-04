@@ -1,5 +1,6 @@
 package co.ke.kumea.data.repository
 
+import co.ke.kumea.data.local.FarmDao
 import co.ke.kumea.data.local.FieldDao
 import co.ke.kumea.data.local.FieldEntity
 import co.ke.kumea.data.local.SyncAction
@@ -27,6 +28,7 @@ import kotlinx.datetime.Clock
 @Singleton
 class FieldRepository @Inject constructor(
     private val fieldDao: FieldDao,
+    private val farmDao: FarmDao,
     private val syncConflictDao: SyncConflictDao,
     private val api: KumeaApi,
 ) {
@@ -198,11 +200,19 @@ class FieldRepository @Inject constructor(
             )
         }
 
+        // Guard: only upsert fields whose parent farm exists locally.
+        // The API returns all user fields across all farms — a farm the device
+        // hasn't pulled yet (or lost during a failed sync cycle) will fail the
+        // Room FK constraint. Skip those; the farm pull runs before field pull.
+        val localFarmIds = farmDao.getAllIds().toSet()
+        val orphanedEntities = localEntities.filter { it.farmId !in localFarmIds }
+        val ownedEntities = localEntities.filter { it.farmId in localFarmIds }
+
         // Invariant (same as FarmRepository): never let pull clobber a row that
         // push hasn't reconciled yet. pushPending() runs first; this is the
         // defensive double-check for rows that became pending in between.
         val pendingIds = fieldDao.getPendingSync().map { it.id }.toSet()
-        val cleanEntities = localEntities.filter { it.id !in pendingIds }
+        val cleanEntities = ownedEntities.filter { it.id !in pendingIds }
         if (cleanEntities.isNotEmpty()) {
             fieldDao.upsertAll(cleanEntities)
         }

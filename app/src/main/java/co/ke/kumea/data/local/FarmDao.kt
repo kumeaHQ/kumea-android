@@ -17,6 +17,10 @@ interface FarmDao {
     @Query("SELECT * FROM farms WHERE deletedAt IS NULL AND syncAction != 'DELETE' ORDER BY updatedAt DESC")
     fun getAllActive(): Flow<List<FarmEntity>>
 
+    /** All farm IDs currently in Room (for field FK guard). */
+    @Query("SELECT id FROM farms WHERE deletedAt IS NULL AND syncAction != 'DELETE'")
+    suspend fun getAllIds(): List<String>
+
     /**
      * Rows with pending local changes that need to be pushed to the server.
      * Ordered oldest-first to make conflict debugging predictable.

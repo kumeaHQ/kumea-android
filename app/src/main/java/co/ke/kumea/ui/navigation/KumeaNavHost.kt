@@ -14,6 +14,7 @@ import co.ke.kumea.ui.screen.auth.PinEntryScreen
 import co.ke.kumea.ui.screen.auth.PinSetupScreen
 import co.ke.kumea.ui.screen.farm.FarmCreateScreen
 import co.ke.kumea.ui.screen.farm.FarmListScreen
+import co.ke.kumea.ui.screen.ledger.LedgerScreen
 import co.ke.kumea.ui.screen.note.NoteCreateScreen
 import co.ke.kumea.ui.screen.note.NoteListScreen
 
@@ -26,12 +27,14 @@ object Routes {
     const val FARM_CREATE = "farms/create"
     const val NOTE_LIST = "farms/{farmId}/notes"
     const val NOTE_CREATE = "farms/{farmId}/notes/create"
+    const val LEDGER = "farms/{farmId}/ledger"
 
     fun otpEntry(phone: String) = "otp_entry/${Uri.encode(phone)}"
     fun pinSetup(registrationToken: String) = "pin_setup/${Uri.encode(registrationToken)}"
     fun pinEntry(phone: String) = "pin_entry/${Uri.encode(phone)}"
     fun noteList(farmId: String) = "farms/${Uri.encode(farmId)}/notes"
     fun noteCreate(farmId: String) = "farms/${Uri.encode(farmId)}/notes/create"
+    fun ledger(farmId: String) = "farms/${Uri.encode(farmId)}/ledger"
 }
 
 @Composable
@@ -107,6 +110,7 @@ fun KumeaNavHost(
             NoteListScreen(
                 onBack = { navController.popBackStack() },
                 onAddNote = { navController.navigate(Routes.noteCreate(farmId)) },
+                onOpenLedger = { navController.navigate(Routes.ledger(farmId)) },
             )
         }
         composable(
@@ -114,6 +118,12 @@ fun KumeaNavHost(
             arguments = listOf(navArgument("farmId") { type = NavType.StringType }),
         ) {
             NoteCreateScreen(onBack = { navController.popBackStack() })
+        }
+        composable(
+            Routes.LEDGER,
+            arguments = listOf(navArgument("farmId") { type = NavType.StringType }),
+        ) {
+            LedgerScreen(onBack = { navController.popBackStack() })
         }
     }
 }

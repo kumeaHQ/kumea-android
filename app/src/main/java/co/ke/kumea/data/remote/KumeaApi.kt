@@ -4,7 +4,9 @@ import co.ke.kumea.data.remote.dto.AuthResponse
 import co.ke.kumea.data.remote.dto.FarmCreateRequest
 import co.ke.kumea.data.remote.dto.FarmResponse
 import co.ke.kumea.data.remote.dto.FarmUpdateRequest
+import co.ke.kumea.data.remote.dto.FarmLedgerResponse
 import co.ke.kumea.data.remote.dto.FieldCreateRequest
+import co.ke.kumea.data.remote.dto.FieldLedgerResponse
 import co.ke.kumea.data.remote.dto.FieldResponse
 import co.ke.kumea.data.remote.dto.FieldUpdateRequest
 import co.ke.kumea.data.remote.dto.HealthResponse
@@ -121,4 +123,17 @@ interface KumeaApi {
 
     @DELETE("notes/{id}")
     suspend fun deleteNote(@Path("id") id: String): Response<Unit>
+
+    // ---- Ledger (Ticket 3.3) ----
+    // Read-only P&L rollups over Notes. No writes. Cents arrive as Strings (money
+    // is BigInt cents server-side) and are parsed to signed Long in
+    // LedgerRepository, never via Double. netCents can be negative. These return
+    // the body directly (not Response<>) so a non-2xx surfaces as HttpException
+    // the ViewModel catches and shows on the snackbar — never silently.
+
+    @GET("farms/{farmId}/ledger")
+    suspend fun getFarmLedger(@Path("farmId") farmId: String): FarmLedgerResponse
+
+    @GET("fields/{fieldId}/ledger")
+    suspend fun getFieldLedger(@Path("fieldId") fieldId: String): FieldLedgerResponse
 }

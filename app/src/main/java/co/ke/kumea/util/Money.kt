@@ -58,12 +58,21 @@ object Money {
     /**
      * Format integer cents for display, e.g. 200000 → "KES 2,000.00",
      * 9007199254740993 → "KES 90,071,992,547,409.93". Display-edge only.
+     *
+     * Handles negative cents (the Ledger's net P&L can be a loss — Ticket 3.3):
+     * -120050 → "KES -1,200.50". The sign is applied to the whole amount; the
+     * shillings/cents split is done on the magnitude so the fractional part never
+     * goes negative (the naive `cents % 100` would render "-1,200.-50"). Money
+     * never reaches Long.MIN_VALUE, so negating the magnitude is safe.
      */
     fun formatCents(cents: Long): String {
-        val shillings = cents / 100
-        val remainder = (cents % 100).toInt()
+        val negative = cents < 0
+        val magnitude = if (negative) -cents else cents
+        val shillings = magnitude / 100
+        val remainder = (magnitude % 100).toInt()
+        val sign = if (negative) "-" else ""
         // Fixed locale: KES groups thousands with "," and uses "." for the
         // decimal. Keep it deterministic rather than at the mercy of device locale.
-        return String.format(Locale.US, "KES %,d.%02d", shillings, remainder)
+        return String.format(Locale.US, "KES $sign%,d.%02d", shillings, remainder)
     }
 }
