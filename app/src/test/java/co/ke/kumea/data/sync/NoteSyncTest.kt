@@ -102,11 +102,13 @@ class NoteSyncTest {
         }
         val repository = NoteRepository(dao, NoOpConflictDao(), api)
 
-        repository.pushPending()
+        val pushed = repository.pushPending()
 
         // Wire value is the exact decimal string — not a Number, no precision loss.
         assertEquals(aboveTwo53Wire, sent?.amountCents)
         assertEquals("note-1" to "t2", dao.markSyncedCalls.single())
+        // Ticket 2.3: a successful push reports one row moved.
+        assertEquals(1, pushed)
     }
 
     @Test
@@ -118,9 +120,11 @@ class NoteSyncTest {
         }
         val repository = NoteRepository(dao, NoOpConflictDao(), api)
 
-        repository.pullSince()
+        val pulled = repository.pullSince()
 
         assertEquals(aboveTwo53, dao.upsertAlls.single().single().amountCents)
+        // Ticket 2.3: a pull that applied one row reports one row moved.
+        assertEquals(1, pulled)
     }
 
     // ── Ticket 2.1: costCategory crosses the wire as the enum name ────────────

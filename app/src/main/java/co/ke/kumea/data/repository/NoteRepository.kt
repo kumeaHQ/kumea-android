@@ -123,8 +123,9 @@ class NoteRepository @Inject constructor(
      * Push all pending local changes to the server.
      * Called by the sync trigger (manual refresh today; SyncWorker later).
      */
-    override suspend fun pushPending() {
+    override suspend fun pushPending(): Int {
         val pending = noteDao.getPendingSync()
+        var pushed = 0
         for (note in pending) {
             try {
                 when (note.syncAction) {
@@ -145,6 +146,7 @@ class NoteRepository @Inject constructor(
                         if (response.isSuccessful) {
                             val serverNote = response.body()!!
                             noteDao.markSynced(note.id, serverNote.updatedAt)
+                            pushed++
                         } else if (response.code() == 409) {
                             val serverBody = response.errorBody()?.string() ?: "{}"
                             recordConflict(note, serverBody, "create_409")
@@ -166,6 +168,7 @@ class NoteRepository @Inject constructor(
                         if (response.isSuccessful) {
                             val serverNote = response.body()!!
                             noteDao.markSynced(note.id, serverNote.updatedAt)
+                            pushed++
                         } else if (response.code() == 409) {
                             val serverBody = response.errorBody()?.string() ?: "{}"
                             recordConflict(note, serverBody, "update_409")
@@ -177,6 +180,7 @@ class NoteRepository @Inject constructor(
                         if (response.isSuccessful) {
                             val now = Clock.System.now().toString()
                             noteDao.markSyncedDelete(note.id, note.deletedAt ?: now)
+                            pushed++
                         }
                     }
                 }
@@ -186,6 +190,7 @@ class NoteRepository @Inject constructor(
                 throw e
             }
         }
+        return pushed
     }
 
     /**
@@ -196,7 +201,7 @@ class NoteRepository @Inject constructor(
      * notes). amountCents is parsed from the wire String to Long here — never via
      * Double, so values above 2^53 survive intact.
      */
-    override suspend fun pullSince() {
+    override suspend fun pullSince(): Int {
         val since = noteDao.getLatestUpdatedAt()
         // includeDeleted = true so soft-deleted rows reconcile on other devices
         // (same as Field; see FieldRepository.pullSince).
@@ -206,7 +211,7 @@ class NoteRepository @Inject constructor(
             throw e
         }
 
-        if (serverNotes.isEmpty()) return
+        if (serverNotes.isEmpty()) return 0
 
         val localEntities = serverNotes.map { server ->
             NoteEntity(
@@ -234,6 +239,7 @@ class NoteRepository @Inject constructor(
         if (cleanEntities.isNotEmpty()) {
             noteDao.upsertAll(cleanEntities)
         }
+        return cleanEntities.size
     }
 
     private suspend fun recordConflict(local: NoteEntity, serverPayload: String, conflictType: String) {

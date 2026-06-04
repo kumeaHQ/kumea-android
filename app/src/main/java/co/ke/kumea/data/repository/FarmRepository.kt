@@ -93,8 +93,9 @@ class FarmRepository @Inject constructor(
      * Push all pending local changes to the server.
      * Called by SyncWorker.
      */
-    override suspend fun pushPending() {
+    override suspend fun pushPending(): Int {
         val pending = farmDao.getPendingSync()
+        var pushed = 0
         for (farm in pending) {
             try {
                 when (farm.syncAction) {
@@ -109,6 +110,7 @@ class FarmRepository @Inject constructor(
                         if (response.isSuccessful) {
                             val serverFarm = response.body()!!
                             farmDao.markSynced(farm.id, serverFarm.updatedAt)
+                            pushed++
                         } else if (response.code() == 409) {
                             // Conflict — server wins, log and discard local
                             val serverBody = response.errorBody()?.string() ?: "{}"
@@ -129,6 +131,7 @@ class FarmRepository @Inject constructor(
                         if (response.isSuccessful) {
                             val serverFarm = response.body()!!
                             farmDao.markSynced(farm.id, serverFarm.updatedAt)
+                            pushed++
                         } else if (response.code() == 409) {
                             val serverBody = response.errorBody()?.string() ?: "{}"
                             recordConflict(farm, serverBody, "update_409")
@@ -141,6 +144,7 @@ class FarmRepository @Inject constructor(
                             // DELETE returns 204 — no body, just mark synced
                             val now = Clock.System.now().toString()
                             farmDao.markSyncedDelete(farm.id, farm.deletedAt ?: now)
+                            pushed++
                         }
                         // DELETE never returns 409 per Ticket 1.3; if we somehow get one,
                         // just clear pendingSync and let the row reconcile on next pull
@@ -152,13 +156,14 @@ class FarmRepository @Inject constructor(
                 throw e
             }
         }
+        return pushed
     }
 
     /**
      * Pull server changes since the latest local updatedAt.
      * Called by SyncWorker.
      */
-    override suspend fun pullSince() {
+    override suspend fun pullSince(): Int {
         val since = farmDao.getLatestUpdatedAt()
         val serverFarms = try {
             api.getFarms(since = since, includeDeleted = true)
@@ -167,7 +172,7 @@ class FarmRepository @Inject constructor(
             throw e
         }
 
-        if (serverFarms.isEmpty()) return
+        if (serverFarms.isEmpty()) return 0
 
         val localEntities = serverFarms.map { server ->
             FarmEntity(
@@ -198,6 +203,7 @@ class FarmRepository @Inject constructor(
         if (cleanEntities.isNotEmpty()) {
             farmDao.upsertAll(cleanEntities)
         }
+        return cleanEntities.size
     }
 
     private suspend fun recordConflict(local: FarmEntity, serverPayload: String, conflictType: String) {

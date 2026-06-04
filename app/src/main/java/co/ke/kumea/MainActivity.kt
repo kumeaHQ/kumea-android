@@ -1,14 +1,19 @@
 package co.ke.kumea
 
+import android.Manifest
+import android.os.Build
 import android.os.Bundle
 import androidx.activity.ComponentActivity
+import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -27,6 +32,7 @@ class MainActivity : ComponentActivity() {
         enableEdgeToEdge()
         setContent {
             KumeaTheme {
+                RequestNotificationPermissionOnce()
                 val startupViewModel: StartupViewModel = hiltViewModel()
                 val state by startupViewModel.state.collectAsStateWithLifecycle()
                 when (val s = state) {
@@ -34,6 +40,24 @@ class MainActivity : ComponentActivity() {
                     is StartupState.Ready -> KumeaNavHost(startDestination = s.startDestination)
                 }
             }
+        }
+    }
+}
+
+/**
+ * Ask for POST_NOTIFICATIONS once on Android 13+ so background-sync notifications
+ * (Ticket 2.3) can show. Fire-and-forget: the result is irrelevant here — if the
+ * user denies, SyncNotifier silently no-ops and sync still runs. Sync is never
+ * blocked on this permission.
+ */
+@Composable
+private fun RequestNotificationPermissionOnce() {
+    val launcher = rememberLauncherForActivityResult(
+        ActivityResultContracts.RequestPermission(),
+    ) { /* granted or not, sync proceeds either way */ }
+    LaunchedEffect(Unit) {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            launcher.launch(Manifest.permission.POST_NOTIFICATIONS)
         }
     }
 }

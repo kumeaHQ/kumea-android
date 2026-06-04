@@ -22,11 +22,14 @@ class SyncWorkerOrderTest {
         private val name: String,
         private val records: MutableList<CallRecord>,
         private val failOnPull: Boolean = false,
+        private val pushCount: Int = 0,
+        private val pullCount: Int = 0,
     ) : SyncableRepository {
-        override suspend fun pushPending() { records.add(CallRecord(name, "push")) }
-        override suspend fun pullSince() {
+        override suspend fun pushPending(): Int { records.add(CallRecord(name, "push")); return pushCount }
+        override suspend fun pullSince(): Int {
             if (failOnPull) throw IllegalStateException("$name: FK guard missing")
             records.add(CallRecord(name, "pull"))
+            return pullCount
         }
     }
 
@@ -69,5 +72,40 @@ class SyncWorkerOrderTest {
         for (repo in repos) { repo.pushPending(); repo.pullSince() }
         val pushes = records.filter { it.phase == "push" }.map { it.repo }
         assertEquals(listOf("farm", "field", "note"), pushes)
+    }
+
+    // ── Ticket 2.3: row counts aggregate across the multibound set ───────────
+    // SyncWorker sums these to decide whether a background sync moved any data
+    // (and so whether to show a "synced" notification).
+
+    /** Counts from every repo sum into the worker's pushed/pulled totals. */
+    @Test
+    fun `push and pull counts aggregate across repos`() = runBlocking {
+        val records = mutableListOf<CallRecord>()
+        val repos = linkedSetOf(
+            TrackingRepo("farm", records, pushCount = 1, pullCount = 0),
+            TrackingRepo("field", records, pushCount = 0, pullCount = 2),
+            TrackingRepo("note", records, pushCount = 3, pullCount = 4),
+        )
+        var pushed = 0
+        var pulled = 0
+        for (repo in repos) { pushed += repo.pushPending(); pulled += repo.pullSince() }
+        assertEquals(4, pushed)
+        assertEquals(6, pulled)
+        assertTrue("Data moved → worker would notify", pushed + pulled > 0)
+    }
+
+    /** All repos report zero → nothing moved → worker stays silent. */
+    @Test
+    fun `zero counts mean nothing moved`() = runBlocking {
+        val records = mutableListOf<CallRecord>()
+        val repos = linkedSetOf(
+            TrackingRepo("farm", records),
+            TrackingRepo("field", records),
+            TrackingRepo("note", records),
+        )
+        var moved = 0
+        for (repo in repos) { moved += repo.pushPending(); moved += repo.pullSince() }
+        assertEquals("Nothing pending, nothing pulled → silent", 0, moved)
     }
 }

@@ -106,8 +106,9 @@ class FieldRepository @Inject constructor(
      * Push all pending local changes to the server.
      * Called by the sync trigger (manual refresh today; SyncWorker later).
      */
-    override suspend fun pushPending() {
+    override suspend fun pushPending(): Int {
         val pending = fieldDao.getPendingSync()
+        var pushed = 0
         for (field in pending) {
             try {
                 when (field.syncAction) {
@@ -122,6 +123,7 @@ class FieldRepository @Inject constructor(
                         if (response.isSuccessful) {
                             val serverField = response.body()!!
                             fieldDao.markSynced(field.id, serverField.updatedAt)
+                            pushed++
                         } else if (response.code() == 409) {
                             // Conflict — server wins, log and discard local
                             val serverBody = response.errorBody()?.string() ?: "{}"
@@ -139,6 +141,7 @@ class FieldRepository @Inject constructor(
                         if (response.isSuccessful) {
                             val serverField = response.body()!!
                             fieldDao.markSynced(field.id, serverField.updatedAt)
+                            pushed++
                         } else if (response.code() == 409) {
                             val serverBody = response.errorBody()?.string() ?: "{}"
                             recordConflict(field, serverBody, "update_409")
@@ -151,6 +154,7 @@ class FieldRepository @Inject constructor(
                             // DELETE returns 204 — no body, just mark synced
                             val now = Clock.System.now().toString()
                             fieldDao.markSyncedDelete(field.id, field.deletedAt ?: now)
+                            pushed++
                         }
                         // DELETE never returns 409 per Ticket 1.3; if we somehow get one,
                         // leave it pending and let the next pull reconcile.
@@ -162,6 +166,7 @@ class FieldRepository @Inject constructor(
                 throw e
             }
         }
+        return pushed
     }
 
     /**
@@ -171,7 +176,7 @@ class FieldRepository @Inject constructor(
      * requires its parent farm row to exist locally first. The refresh path pulls
      * farms then fields for exactly this reason.
      */
-    override suspend fun pullSince() {
+    override suspend fun pullSince(): Int {
         val since = fieldDao.getLatestUpdatedAt()
         // includeDeleted = true so soft-deleted rows (deletedAt set) come down in
         // the delta and offline devices can reconcile a remote delete (AC 17).
@@ -184,7 +189,7 @@ class FieldRepository @Inject constructor(
             throw e
         }
 
-        if (serverFields.isEmpty()) return
+        if (serverFields.isEmpty()) return 0
 
         val localEntities = serverFields.map { server ->
             FieldEntity(
@@ -217,6 +222,7 @@ class FieldRepository @Inject constructor(
         if (cleanEntities.isNotEmpty()) {
             fieldDao.upsertAll(cleanEntities)
         }
+        return cleanEntities.size
     }
 
     private suspend fun recordConflict(local: FieldEntity, serverPayload: String, conflictType: String) {
