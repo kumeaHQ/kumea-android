@@ -13,6 +13,7 @@ import java.util.UUID
 import javax.inject.Inject
 import javax.inject.Singleton
 import kotlinx.datetime.Clock
+import co.ke.kumea.data.sync.SyncableRepository
 
 /**
  * Orchestrates local Room persistence with remote API for offline-first Farm sync.
@@ -22,7 +23,7 @@ class FarmRepository @Inject constructor(
     private val farmDao: FarmDao,
     private val syncConflictDao: SyncConflictDao,
     private val api: KumeaApi,
-) {
+) : SyncableRepository {
     /**
      * Observe all active farms (live, via Room Flow).
      */
@@ -90,9 +91,9 @@ class FarmRepository @Inject constructor(
 
     /**
      * Push all pending local changes to the server.
-     * Called by FarmSyncWorker.
+     * Called by SyncWorker.
      */
-    suspend fun pushPending() {
+    override suspend fun pushPending() {
         val pending = farmDao.getPendingSync()
         for (farm in pending) {
             try {
@@ -155,9 +156,9 @@ class FarmRepository @Inject constructor(
 
     /**
      * Pull server changes since the latest local updatedAt.
-     * Called by FarmSyncWorker.
+     * Called by SyncWorker.
      */
-    suspend fun pullSince() {
+    override suspend fun pullSince() {
         val since = farmDao.getLatestUpdatedAt()
         val serverFarms = try {
             api.getFarms(since = since, includeDeleted = true)

@@ -15,6 +15,7 @@ import java.util.UUID
 import javax.inject.Inject
 import javax.inject.Singleton
 import kotlinx.datetime.Clock
+import co.ke.kumea.data.sync.SyncableRepository
 
 /**
  * Offline-first Note sync — a direct copy of FieldRepository (Ticket 3.2).
@@ -32,7 +33,7 @@ class NoteRepository @Inject constructor(
     private val noteDao: NoteDao,
     private val syncConflictDao: SyncConflictDao,
     private val api: KumeaApi,
-) {
+) : SyncableRepository {
     /** Observe all active notes (live, via Room Flow). */
     fun getAllActive(): Flow<List<NoteEntity>> = noteDao.getAllActive()
 
@@ -120,9 +121,9 @@ class NoteRepository @Inject constructor(
 
     /**
      * Push all pending local changes to the server.
-     * Called by the sync trigger (manual refresh today; NoteSyncWorker later).
+     * Called by the sync trigger (manual refresh today; SyncWorker later).
      */
-    suspend fun pushPending() {
+    override suspend fun pushPending() {
         val pending = noteDao.getPendingSync()
         for (note in pending) {
             try {
@@ -195,7 +196,7 @@ class NoteRepository @Inject constructor(
      * notes). amountCents is parsed from the wire String to Long here — never via
      * Double, so values above 2^53 survive intact.
      */
-    suspend fun pullSince() {
+    override suspend fun pullSince() {
         val since = noteDao.getLatestUpdatedAt()
         // includeDeleted = true so soft-deleted rows reconcile on other devices
         // (same as Field; see FieldRepository.pullSince).

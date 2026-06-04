@@ -14,6 +14,7 @@ import java.util.UUID
 import javax.inject.Inject
 import javax.inject.Singleton
 import kotlinx.datetime.Clock
+import co.ke.kumea.data.sync.SyncableRepository
 
 /**
  * Offline-first Field sync — a direct copy of FarmRepository (Ticket 3.1).
@@ -31,7 +32,7 @@ class FieldRepository @Inject constructor(
     private val farmDao: FarmDao,
     private val syncConflictDao: SyncConflictDao,
     private val api: KumeaApi,
-) {
+) : SyncableRepository {
     /** Observe all active fields (live, via Room Flow). */
     fun getAllActive(): Flow<List<FieldEntity>> = fieldDao.getAllActive()
 
@@ -103,9 +104,9 @@ class FieldRepository @Inject constructor(
 
     /**
      * Push all pending local changes to the server.
-     * Called by the sync trigger (manual refresh today; FieldSyncWorker later).
+     * Called by the sync trigger (manual refresh today; SyncWorker later).
      */
-    suspend fun pushPending() {
+    override suspend fun pushPending() {
         val pending = fieldDao.getPendingSync()
         for (field in pending) {
             try {
@@ -170,7 +171,7 @@ class FieldRepository @Inject constructor(
      * requires its parent farm row to exist locally first. The refresh path pulls
      * farms then fields for exactly this reason.
      */
-    suspend fun pullSince() {
+    override suspend fun pullSince() {
         val since = fieldDao.getLatestUpdatedAt()
         // includeDeleted = true so soft-deleted rows (deletedAt set) come down in
         // the delta and offline devices can reconcile a remote delete (AC 17).
