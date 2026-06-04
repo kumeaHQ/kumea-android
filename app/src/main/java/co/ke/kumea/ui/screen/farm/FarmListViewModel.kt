@@ -62,6 +62,7 @@ class FarmListViewModel @Inject constructor(
                 Log.d("Sync", "✅ pushPending fields OK")
             } catch (e: Exception) {
                 Log.e("Sync", "❌ pushPending fields: ${e.message}", e)
+                if (_errorMessage.value == null) _errorMessage.value = "Field push failed: ${e.message}"
             }
             try {
                 fieldRepository.pullSince()

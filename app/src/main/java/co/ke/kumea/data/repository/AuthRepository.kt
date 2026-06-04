@@ -2,6 +2,7 @@ package co.ke.kumea.data.repository
 
 import co.ke.kumea.data.auth.TokenStore
 import co.ke.kumea.data.local.KumeaDatabase
+import android.util.Log
 import co.ke.kumea.data.remote.KumeaApi
 import co.ke.kumea.data.remote.dto.AuthResponse
 import co.ke.kumea.data.remote.dto.LoginRequest
@@ -90,7 +91,7 @@ class AuthRepository @Inject constructor(
             try {
                 api.logout(LogoutRequest(refreshToken))
             } catch (e: Exception) {
-                // Best-effort only.
+                Log.w("Auth", "Logout API call failed (best-effort): ${e.message}")
             }
         }
         clearSession()

@@ -1,5 +1,6 @@
 package co.ke.kumea.ui.screen.note
 
+import android.util.Log
 import androidx.lifecycle.SavedStateHandle
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
@@ -38,46 +39,65 @@ class NoteListViewModel @Inject constructor(
     private val _isRefreshing = MutableStateFlow(false)
     val isRefreshing: StateFlow<Boolean> = _isRefreshing.asStateFlow()
 
+    private val _errorMessage = MutableStateFlow<String?>(null)
+    val errorMessage: StateFlow<String?> = _errorMessage.asStateFlow()
+
     fun refresh() {
         if (_isRefreshing.value) return
         viewModelScope.launch {
             _isRefreshing.value = true
             // Parents before children, one pass: farms → fields → notes. A note's
             // CASCADE foreign key needs its field (and the field its farm) present
-            // locally first. Each step is best-effort; a sync failure must not
-            // crash pull-to-refresh. This is the manual stand-in for the deferred
+            // locally first. Each step logs + surfaces errors to the snackbar —
+            // never silent. This is the manual stand-in for the deferred
             // single-WorkManager-wakeup that will sync all three together.
             try {
                 farmRepository.pushPending()
+                Log.d("Sync", "✅ pushPending farms OK")
             } catch (e: Exception) {
-                // ignore; durable retry lives in the worker
+                Log.e("Sync", "❌ pushPending farms: ${e.message}", e)
+                _errorMessage.value = "Farm push failed: ${e.message}"
             }
             try {
                 farmRepository.pullSince()
+                Log.d("Sync", "✅ pullSince farms OK")
             } catch (e: Exception) {
-                // ignore; offline or transient
+                Log.e("Sync", "❌ pullSince farms: ${e.message}", e)
+                if (_errorMessage.value == null) _errorMessage.value = "Farm pull failed: ${e.message}"
             }
             try {
                 fieldRepository.pushPending()
+                Log.d("Sync", "✅ pushPending fields OK")
             } catch (e: Exception) {
-                // ignore; best-effort
+                Log.e("Sync", "❌ pushPending fields: ${e.message}", e)
+                if (_errorMessage.value == null) _errorMessage.value = "Field push failed: ${e.message}"
             }
             try {
                 fieldRepository.pullSince()
+                Log.d("Sync", "✅ pullSince fields OK – fields now in Room")
             } catch (e: Exception) {
-                // ignore; offline or transient
+                Log.e("Sync", "❌ pullSince fields: ${e.message}", e)
+                if (_errorMessage.value == null) _errorMessage.value = "Field pull failed: ${e.message}"
             }
             try {
                 noteRepository.pushPending()
+                Log.d("Sync", "✅ pushPending notes OK")
             } catch (e: Exception) {
-                // ignore; best-effort
+                Log.e("Sync", "❌ pushPending notes: ${e.message}", e)
+                if (_errorMessage.value == null) _errorMessage.value = "Note push failed: ${e.message}"
             }
             try {
                 noteRepository.pullSince()
+                Log.d("Sync", "✅ pullSince notes OK — notes now in Room")
             } catch (e: Exception) {
-                // ignore; offline or transient
+                Log.e("Sync", "❌ pullSince notes: ${e.message}", e)
+                if (_errorMessage.value == null) _errorMessage.value = "Note pull failed: ${e.message}"
             }
             _isRefreshing.value = false
         }
+    }
+
+    fun onErrorShown() {
+        _errorMessage.value = null
     }
 }

@@ -119,6 +119,23 @@ FieldSyncWorker. Do not introduce `SyncableEntity<T>` abstractions.
 | Phone numbers | E.164 `String` | Normalized to `+254…` |
 | Soft deletes | `deletedAt` column | Queries filter `WHERE deletedAt IS NULL` |
 
+
+## Build Tool Version Discipline
+
+**Do NOT upgrade build-tool versions (Gradle, AGP, Kotlin, KSP) or add/bump
+dependencies without an explicit ticket authorizing it.** The versions in
+`gradle/libs.versions.toml` are load-bearing. In particular:
+
+- **Hilt 2.51.1 requires AGP < 9.x** — bumping AGP past 8.x breaks the DI layer.
+- Claude Code has been observed reaching for newer versions unprompted (Gradle
+  8.13→9.4.1, AGP→9.2.1, Kotlin→2.2.10, KSP→2.3.2) — these would have broken
+  Hilt and were reverted.
+- If you believe an upgrade is needed, **stop and flag it** rather than doing it.
+  File a task chip; the team decides.
+
+This is a confirmed live risk (May 30, 2026 session). Version drift has broken
+the build before.
+
 ## Naming Conventions
 
 - Package: `co.ke.kumea`
