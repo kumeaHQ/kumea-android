@@ -153,6 +153,14 @@ the build before.
 
 ## Active Ticket
 
+**Ticket 2.3 — Background Sync** (full spec at `.claude/ticket-2.3.md`)
+
+Build a WorkManager chain on top of the SyncWorker/SyncableRepository from Ticket 2.2.
+Connectivity-triggered primary sync + 6-hour periodic safety net. Notification only when
+data actually moved, error only on sustained failure. This is the first real WorkManager
+enqueue in the app — the workers existed before but nothing was ever scheduled.
+
+
 **Ticket 2.2 — Extract Sync Abstraction** (full spec at `.claude/ticket-2.2.md`)
 
 FarmSyncWorker, FieldSyncWorker, and NoteSyncWorker are identical copies (28 lines each).
