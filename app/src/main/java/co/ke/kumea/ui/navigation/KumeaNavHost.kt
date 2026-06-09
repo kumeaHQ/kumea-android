@@ -12,6 +12,7 @@ import co.ke.kumea.ui.screen.auth.OtpEntryScreen
 import co.ke.kumea.ui.screen.auth.PhoneEntryScreen
 import co.ke.kumea.ui.screen.auth.PinEntryScreen
 import co.ke.kumea.ui.screen.auth.PinSetupScreen
+import co.ke.kumea.ui.screen.distribution.DistributionDemoScreen
 import co.ke.kumea.ui.screen.farm.FarmCreateScreen
 import co.ke.kumea.ui.screen.farm.FarmListScreen
 import co.ke.kumea.ui.screen.ledger.LedgerScreen
@@ -25,6 +26,7 @@ object Routes {
     const val PIN_ENTRY = "pin_entry/{phone}"
     const val FARM_LIST = "farms"
     const val FARM_CREATE = "farms/create"
+    const val DISTRIBUTION_DEMO = "distribution/demo"
     const val NOTE_LIST = "farms/{farmId}/notes"
     const val NOTE_CREATE = "farms/{farmId}/notes/create"
     const val LEDGER = "farms/{farmId}/ledger"
@@ -92,6 +94,7 @@ fun KumeaNavHost(
             FarmListScreen(
                 onAddFarm = { navController.navigate(Routes.FARM_CREATE) },
                 onOpenFarm = { farmId -> navController.navigate(Routes.noteList(farmId)) },
+                onOpenDistributionDemo = { navController.navigate(Routes.DISTRIBUTION_DEMO) },
                 onLoggedOut = {
                     navController.navigate(Routes.PHONE_ENTRY) {
                         popUpTo(0) { inclusive = true }
@@ -101,6 +104,9 @@ fun KumeaNavHost(
         }
         composable(Routes.FARM_CREATE) {
             FarmCreateScreen(onBack = { navController.popBackStack() })
+        }
+        composable(Routes.DISTRIBUTION_DEMO) {
+            DistributionDemoScreen(onBack = { navController.popBackStack() })
         }
         composable(
             Routes.NOTE_LIST,

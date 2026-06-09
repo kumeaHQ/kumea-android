@@ -32,7 +32,15 @@ class FarmRepository @Inject constructor(
     /**
      * Create a farm locally (offline-first). Returns the generated UUID.
      */
-    suspend fun createLocal(name: String, locationLat: Double?, locationLng: Double?, waterSource: String?): String {
+    suspend fun createLocal(
+        name: String,
+        locationLat: Double?,
+        locationLng: Double?,
+        waterSource: String?,
+        // T4: the Agent who registered this farmer (optional, non-commercial).
+        // Default null keeps existing callers source-compatible.
+        referrerAgentId: String? = null,
+    ): String {
         val now = Clock.System.now().toString()
         val id = UUID.randomUUID().toString()
         val farm = FarmEntity(
@@ -41,6 +49,7 @@ class FarmRepository @Inject constructor(
             locationLat = locationLat,
             locationLng = locationLng,
             waterSource = waterSource,
+            referrerAgentId = referrerAgentId,
             createdAt = now,
             updatedAt = now,
             deletedAt = null,
@@ -106,6 +115,7 @@ class FarmRepository @Inject constructor(
                             locationLat = farm.locationLat,
                             locationLng = farm.locationLng,
                             waterSource = farm.waterSource,
+                            referrerAgentId = farm.referrerAgentId,
                         ))
                         if (response.isSuccessful) {
                             val serverFarm = response.body()!!
@@ -181,6 +191,7 @@ class FarmRepository @Inject constructor(
                 locationLat = server.locationLat,
                 locationLng = server.locationLng,
                 waterSource = server.waterSource,
+                referrerAgentId = server.referrerAgentId,
                 createdAt = server.createdAt,
                 updatedAt = server.updatedAt,
                 deletedAt = server.deletedAt,

@@ -2,6 +2,7 @@ package co.ke.kumea.di
 
 import android.content.Context
 import androidx.room.Room
+import co.ke.kumea.data.local.AgentDao
 import co.ke.kumea.data.local.FarmDao
 import co.ke.kumea.data.local.FieldDao
 import co.ke.kumea.data.local.KumeaDatabase
@@ -28,6 +29,10 @@ object DatabaseModule {
         DATABASE_NAME,
     ).fallbackToDestructiveMigration()
         .build()
+
+    @Provides
+    @Singleton
+    fun provideAgentDao(database: KumeaDatabase): AgentDao = database.agentDao()
 
     @Provides
     @Singleton

@@ -15,6 +15,11 @@ data class FarmEntity(
     val locationLat: Double?,
     val locationLng: Double?,
     val waterSource: String?,
+    // T4: the Agent who REGISTERED this farmer. SOFT pointer — no Room ForeignKey,
+    // because the referrer (often an officer) need not be on this device; the
+    // server owns referential integrity. NON-COMMERCIAL: officers are allowed
+    // here. referrer = who registered; agent_code = who sold.
+    val referrerAgentId: String? = null,
     val createdAt: String,
     val updatedAt: String,
     val deletedAt: String?,

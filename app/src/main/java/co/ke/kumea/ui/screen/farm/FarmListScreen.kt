@@ -24,6 +24,7 @@ fun FarmListScreen(
     onAddFarm: () -> Unit,
     onOpenFarm: (String) -> Unit,
     onLoggedOut: () -> Unit,
+    onOpenDistributionDemo: () -> Unit = {},
     viewModel: FarmListViewModel = hiltViewModel()
 ) {
     val farms by viewModel.farms.collectAsStateWithLifecycle()
@@ -52,6 +53,10 @@ fun FarmListScreen(
             TopAppBar(
                 title = { Text("My Farms") },
                 actions = {
+                    // Phase 1a · T5-slice device-demo entry point (debug).
+                    TextButton(onClick = onOpenDistributionDemo) {
+                        Text("Agents")
+                    }
                     TextButton(onClick = { viewModel.logout() }) {
                         Text("Log out")
                     }

@@ -1,5 +1,8 @@
 package co.ke.kumea.data.remote
 
+import co.ke.kumea.data.remote.dto.AgentCreateRequest
+import co.ke.kumea.data.remote.dto.AgentResponse
+import co.ke.kumea.data.remote.dto.AgentUpdateRequest
 import co.ke.kumea.data.remote.dto.AuthResponse
 import co.ke.kumea.data.remote.dto.FarmCreateRequest
 import co.ke.kumea.data.remote.dto.FarmResponse
@@ -60,6 +63,31 @@ interface KumeaApi {
 
     @GET("auth/me")
     suspend fun me(): UserProfile
+
+    // ---- Agents (Phase 1a · T5-slice) ----
+    // Flat /agents resource, identical offline-sync shape to /farms. The Agent
+    // is a root in the distribution graph (synced before anything that
+    // attributes to it). No commission field anywhere in the contract — an
+    // officer can never be given commission from the app.
+
+    @GET("agents")
+    suspend fun getAgents(
+        @Query("since") since: String? = null,
+        @Query("includeDeleted") includeDeleted: Boolean = false,
+        @Query("role") role: String? = null,
+    ): List<AgentResponse>
+
+    @POST("agents")
+    suspend fun createAgent(@Body agent: AgentCreateRequest): Response<AgentResponse>
+
+    @PATCH("agents/{id}")
+    suspend fun updateAgent(
+        @Path("id") id: String,
+        @Body agent: AgentUpdateRequest,
+    ): Response<AgentResponse>
+
+    @DELETE("agents/{id}")
+    suspend fun deleteAgent(@Path("id") id: String): Response<Unit>
 
     @GET("farms")
     suspend fun getFarms(

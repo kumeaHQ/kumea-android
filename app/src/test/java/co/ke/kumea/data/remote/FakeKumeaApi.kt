@@ -1,5 +1,8 @@
 package co.ke.kumea.data.remote
 
+import co.ke.kumea.data.remote.dto.AgentCreateRequest
+import co.ke.kumea.data.remote.dto.AgentResponse
+import co.ke.kumea.data.remote.dto.AgentUpdateRequest
 import co.ke.kumea.data.remote.dto.AuthResponse
 import co.ke.kumea.data.remote.dto.FarmCreateRequest
 import co.ke.kumea.data.remote.dto.FarmResponse
@@ -44,6 +47,11 @@ open class FakeKumeaApi : KumeaApi {
     override suspend fun refresh(body: RefreshRequest): AuthResponse = nope()
     override suspend fun logout(body: LogoutRequest): MessageResponse = nope()
     override suspend fun me(): UserProfile = nope()
+
+    override suspend fun getAgents(since: String?, includeDeleted: Boolean, role: String?): List<AgentResponse> = nope()
+    override suspend fun createAgent(agent: AgentCreateRequest): Response<AgentResponse> = nope()
+    override suspend fun updateAgent(id: String, agent: AgentUpdateRequest): Response<AgentResponse> = nope()
+    override suspend fun deleteAgent(id: String): Response<Unit> = nope()
 
     override suspend fun getFarms(since: String?, includeDeleted: Boolean): List<FarmResponse> = nope()
     override suspend fun createFarm(farm: FarmCreateRequest): Response<FarmResponse> = nope()

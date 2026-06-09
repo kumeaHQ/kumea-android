@@ -11,7 +11,13 @@ data class SendOtpRequest(val phone: String)
 data class VerifyOtpRequest(val phone: String, val code: String)
 
 @Serializable
-data class RegisterRequest(val registrationToken: String, val pin: String)
+data class RegisterRequest(
+    val registrationToken: String,
+    val pin: String,
+    // T4: the Agent who registered this farmer (optional, non-commercial;
+    // officers allowed). referrer = who registered; agent_code = who sold.
+    val referrerAgentId: String? = null,
+)
 
 @Serializable
 data class LoginRequest(val phone: String, val pin: String)

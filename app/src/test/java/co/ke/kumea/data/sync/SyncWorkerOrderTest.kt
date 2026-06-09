@@ -74,6 +74,41 @@ class SyncWorkerOrderTest {
         assertEquals(listOf("farm", "field", "note"), pushes)
     }
 
+    // ── Phase 1a · T5-slice: Agent leads the FK order ───────────────────────
+    // Farm.referrerAgentId attributes to an Agent, so a newly-onboarded agent
+    // must push to the server BEFORE a farmer registered with it as referrer
+    // (the server FK requires the Agent row first). RepositoryModule binds
+    // agent → farm → field → note for exactly this reason.
+
+    /** Declared order: agent pushes before farm. */
+    @Test
+    fun `agent pushes before farm in the declared FK order`() = runBlocking {
+        val records = mutableListOf<CallRecord>()
+        val repos = linkedSetOf(
+            TrackingRepo("agent", records),
+            TrackingRepo("farm", records),
+            TrackingRepo("field", records),
+            TrackingRepo("note", records),
+        )
+        for (repo in repos) { repo.pushPending(); repo.pullSince() }
+        val pushes = records.filter { it.phase == "push" }.map { it.repo }
+        assertEquals(listOf("agent", "farm", "field", "note"), pushes)
+    }
+
+    /** Even registered reverse (note → … → agent), per-repo guards keep sync safe. */
+    @Test
+    fun `reverse order including agent still completes via guards`() = runBlocking {
+        val records = mutableListOf<CallRecord>()
+        val repos = linkedSetOf(
+            TrackingRepo("note", records),
+            TrackingRepo("field", records),
+            TrackingRepo("farm", records),
+            TrackingRepo("agent", records),
+        )
+        for (repo in repos) { repo.pushPending(); repo.pullSince() }
+        assertEquals(8, records.size)
+    }
+
     // ── Ticket 2.3: row counts aggregate across the multibound set ───────────
     // SyncWorker sums these to decide whether a background sync moved any data
     // (and so whether to show a "synced" notification).
