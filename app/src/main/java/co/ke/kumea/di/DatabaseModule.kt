@@ -7,6 +7,7 @@ import co.ke.kumea.data.local.FarmDao
 import co.ke.kumea.data.local.FieldDao
 import co.ke.kumea.data.local.KumeaDatabase
 import co.ke.kumea.data.local.NoteDao
+import co.ke.kumea.data.local.OrderDao
 import co.ke.kumea.data.local.SyncConflictDao
 import dagger.Module
 import dagger.Provides
@@ -45,6 +46,10 @@ object DatabaseModule {
     @Provides
     @Singleton
     fun provideNoteDao(database: KumeaDatabase): NoteDao = database.noteDao()
+
+    @Provides
+    @Singleton
+    fun provideOrderDao(database: KumeaDatabase): OrderDao = database.orderDao()
 
     @Provides
     @Singleton

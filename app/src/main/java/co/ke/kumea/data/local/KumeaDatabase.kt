@@ -10,14 +10,15 @@ import androidx.room.RoomDatabase
  * Ticket 2.1: NoteEntity.costCategory column added (version 4 → 5).
  * Phase 1a · T5-slice: AgentEntity added; FarmEntity.referrerAgentId column
  *   added (version 5 → 6).
+ * P1-T3: OrderEntity added (version 6 → 7).
  *
  * fallbackToDestructiveMigration() is safe here — no real users yet, and
  * the Sprint 0 schema contains only development/seed data. A proper migration
  * would be pure ceremony until we ship to production users.
  */
 @Database(
-    entities = [AgentEntity::class, FarmEntity::class, FieldEntity::class, NoteEntity::class, SyncConflictEntity::class],
-    version = 6,
+    entities = [AgentEntity::class, FarmEntity::class, FieldEntity::class, NoteEntity::class, OrderEntity::class, SyncConflictEntity::class],
+    version = 7,
     exportSchema = true,
 )
 abstract class KumeaDatabase : RoomDatabase() {
@@ -25,5 +26,6 @@ abstract class KumeaDatabase : RoomDatabase() {
     abstract fun farmDao(): FarmDao
     abstract fun fieldDao(): FieldDao
     abstract fun noteDao(): NoteDao
+    abstract fun orderDao(): OrderDao
     abstract fun syncConflictDao(): SyncConflictDao
 }

@@ -19,6 +19,9 @@ import co.ke.kumea.data.remote.dto.MessageResponse
 import co.ke.kumea.data.remote.dto.NoteCreateRequest
 import co.ke.kumea.data.remote.dto.NoteResponse
 import co.ke.kumea.data.remote.dto.NoteUpdateRequest
+import co.ke.kumea.data.remote.dto.OrderCreateRequest
+import co.ke.kumea.data.remote.dto.OrderResponse
+import co.ke.kumea.data.remote.dto.OrderUpdateRequest
 import co.ke.kumea.data.remote.dto.RefreshRequest
 import co.ke.kumea.data.remote.dto.RegisterRequest
 import co.ke.kumea.data.remote.dto.SendOtpRequest
@@ -67,6 +70,11 @@ open class FakeKumeaApi : KumeaApi {
     override suspend fun createNote(note: NoteCreateRequest): Response<NoteResponse> = nope()
     override suspend fun updateNote(id: String, note: NoteUpdateRequest): Response<NoteResponse> = nope()
     override suspend fun deleteNote(id: String): Response<Unit> = nope()
+
+    override suspend fun getOrders(since: String?, includeDeleted: Boolean): List<OrderResponse> = nope()
+    override suspend fun createOrder(order: OrderCreateRequest): Response<OrderResponse> = nope()
+    override suspend fun updateOrder(id: String, order: OrderUpdateRequest): Response<OrderResponse> = nope()
+    override suspend fun deleteOrder(id: String): Response<Unit> = nope()
 
     override suspend fun getFarmLedger(farmId: String): FarmLedgerResponse = nope()
     override suspend fun getFieldLedger(fieldId: String): FieldLedgerResponse = nope()

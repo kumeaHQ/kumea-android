@@ -56,6 +56,16 @@ object Money {
     }
 
     /**
+     * Derived line total: qty × unitPrice, in cents. THE one multiplication
+     * function, one layer (P1-T3) — every line-total computation goes through
+     * here so it is always Long math, never Int. At KES 1,000/sachet a large
+     * dealer order crosses Int32 in cents (~KES 21M); multiplyExact refuses
+     * (throws ArithmeticException) rather than silently wrapping past Long.
+     */
+    fun lineTotalCents(qty: Int, unitPriceCents: Long): Long =
+        Math.multiplyExact(qty.toLong(), unitPriceCents)
+
+    /**
      * Format integer cents for display, e.g. 200000 → "KES 2,000.00",
      * 9007199254740993 → "KES 90,071,992,547,409.93". Display-edge only.
      *

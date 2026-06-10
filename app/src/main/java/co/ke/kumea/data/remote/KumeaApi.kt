@@ -16,6 +16,9 @@ import co.ke.kumea.data.remote.dto.HealthResponse
 import co.ke.kumea.data.remote.dto.NoteCreateRequest
 import co.ke.kumea.data.remote.dto.NoteResponse
 import co.ke.kumea.data.remote.dto.NoteUpdateRequest
+import co.ke.kumea.data.remote.dto.OrderCreateRequest
+import co.ke.kumea.data.remote.dto.OrderResponse
+import co.ke.kumea.data.remote.dto.OrderUpdateRequest
 import co.ke.kumea.data.remote.dto.LoginRequest
 import co.ke.kumea.data.remote.dto.LogoutRequest
 import co.ke.kumea.data.remote.dto.MessageResponse
@@ -151,6 +154,30 @@ interface KumeaApi {
 
     @DELETE("notes/{id}")
     suspend fun deleteNote(@Path("id") id: String): Response<Unit>
+
+    // ---- Orders (P1-T3) ----
+    // Flat /orders resource, identical shape to /notes. farmerId travels in the
+    // create body. unitPrice is a String of integer cents end-to-end (money is
+    // BigInt cents server-side, never a JSON number). channel is REQUIRED.
+    // The server rejects an extension_officer agentCode (officer allow-list).
+
+    @GET("orders")
+    suspend fun getOrders(
+        @Query("since") since: String? = null,
+        @Query("includeDeleted") includeDeleted: Boolean = false,
+    ): List<OrderResponse>
+
+    @POST("orders")
+    suspend fun createOrder(@Body order: OrderCreateRequest): Response<OrderResponse>
+
+    @PATCH("orders/{id}")
+    suspend fun updateOrder(
+        @Path("id") id: String,
+        @Body order: OrderUpdateRequest,
+    ): Response<OrderResponse>
+
+    @DELETE("orders/{id}")
+    suspend fun deleteOrder(@Path("id") id: String): Response<Unit>
 
     // ---- Ledger (Ticket 3.3) ----
     // Read-only P&L rollups over Notes. No writes. Cents arrive as Strings (money

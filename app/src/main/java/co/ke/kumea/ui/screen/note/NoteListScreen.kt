@@ -29,6 +29,7 @@ fun NoteListScreen(
     onBack: () -> Unit,
     onAddNote: () -> Unit,
     onOpenLedger: () -> Unit,
+    onRecordSale: () -> Unit,
     viewModel: NoteListViewModel = hiltViewModel(),
 ) {
     val notes by viewModel.notes.collectAsStateWithLifecycle()
@@ -54,6 +55,10 @@ fun NoteListScreen(
                     }
                 },
                 actions = {
+                    // P1-T3 entry point: record a Biofix sale from farm detail.
+                    TextButton(onClick = onRecordSale) {
+                        Text("Sell")
+                    }
                     TextButton(onClick = onOpenLedger) {
                         Text("P&L")
                     }

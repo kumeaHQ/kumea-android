@@ -10,6 +10,7 @@ import co.ke.kumea.data.remote.dto.LogoutRequest
 import co.ke.kumea.data.remote.dto.RegisterRequest
 import co.ke.kumea.data.remote.dto.SendOtpRequest
 import co.ke.kumea.data.remote.dto.SendOtpResponse
+import co.ke.kumea.data.remote.dto.UserProfile
 import co.ke.kumea.data.remote.dto.VerifyOtpRequest
 import co.ke.kumea.data.remote.dto.VerifyOtpResponse
 import kotlinx.coroutines.Dispatchers
@@ -35,6 +36,13 @@ class AuthRepository @Inject constructor(
 ) {
     suspend fun sendOtp(phone: String): SendOtpResponse =
         api.sendOtp(SendOtpRequest(phone))
+
+    /**
+     * Current user profile (GET /auth/me). Throws on network/HTTP failure —
+     * callers that treat it as best-effort (e.g. agent-code auto-populate)
+     * handle and log the failure themselves.
+     */
+    suspend fun me(): UserProfile = api.me()
 
     suspend fun verifyOtp(phone: String, code: String): VerifyOtpResponse =
         api.verifyOtp(VerifyOtpRequest(phone, code))
