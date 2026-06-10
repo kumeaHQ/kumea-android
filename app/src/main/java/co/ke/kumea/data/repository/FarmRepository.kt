@@ -6,6 +6,7 @@ import co.ke.kumea.data.local.SyncAction
 import co.ke.kumea.data.local.SyncConflictDao
 import co.ke.kumea.data.local.SyncConflictEntity
 import co.ke.kumea.data.remote.KumeaApi
+import co.ke.kumea.data.remote.parseErrorCode
 import co.ke.kumea.data.remote.dto.FarmCreateRequest
 import co.ke.kumea.data.remote.dto.FarmUpdateRequest
 import kotlinx.coroutines.flow.Flow
@@ -121,13 +122,28 @@ class FarmRepository @Inject constructor(
                             val serverFarm = response.body()!!
                             farmDao.markSynced(farm.id, serverFarm.updatedAt)
                             pushed++
-                        } else if (response.code() == 409) {
-                            // Conflict — server wins, log and discard local
-                            val serverBody = response.errorBody()?.string() ?: "{}"
-                            recordConflict(farm, serverBody, "create_409")
-                            // If we got the server version in the response body, replace local
-                            // Otherwise we could fetch; for Sprint 0 we just clear pendingSync
-                            farmDao.upsert(farm.copy(pendingSync = false))
+                        } else {
+                            // errorBody().string() consumes the buffer — read it once.
+                            val serverBody = response.errorBody()?.string()
+                            when {
+                                response.code() == 400 &&
+                                    parseErrorCode(serverBody) == "referrer_agent_not_found" -> {
+                                    // FK-GUARD / DEFER: the referrer Agent hasn't synced
+                                    // yet (FK ordering: Agent before Farm). Leave
+                                    // pendingSync=true; the next cycle retries once the
+                                    // agent lands. Not a silent skip — the row stays
+                                    // PENDING and is re-pushed, so correctness does not
+                                    // depend on Set iteration order (P1-T5).
+                                }
+                                response.code() == 409 -> {
+                                    // Conflict — server wins, record and discard local.
+                                    recordConflict(farm, serverBody ?: "{}", "create_409")
+                                    farmDao.upsert(farm.copy(pendingSync = false))
+                                }
+                                // Any other non-2xx leaves the row pending for a later
+                                // cycle, as before — Farm has no other client-side
+                                // permanent rejection in this phase.
+                            }
                         }
                     }
                     SyncAction.UPDATE -> {

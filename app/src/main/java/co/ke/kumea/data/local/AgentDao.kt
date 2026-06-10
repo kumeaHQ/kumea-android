@@ -25,6 +25,15 @@ interface AgentDao {
     @Query("SELECT id FROM agents WHERE deletedAt IS NULL AND syncAction != 'DELETE'")
     suspend fun getAllIds(): List<String>
 
+    /**
+     * Agent codes already allocated on this device that share a (role, region)
+     * prefix — the input to client-side NNN allocation (P1-T5). Includes pending
+     * and soft-deleted rows on purpose: a code, once minted, is never reused so
+     * the sequence stays monotonic. `prefix` is e.g. "VA-NANDI-".
+     */
+    @Query("SELECT agentCode FROM agents WHERE agentCode LIKE :prefix || '%'")
+    suspend fun getCodesWithPrefix(prefix: String): List<String>
+
     @Query("SELECT * FROM agents WHERE pendingSync = 1 ORDER BY updatedAt ASC")
     suspend fun getPendingSync(): List<AgentEntity>
 

@@ -63,11 +63,13 @@ data class OrderFormState(
 }
 
 /**
- * Create-Order ViewModel (P1-T3) — same shape as NoteDetailViewModel. The save
- * path is ONLINE (OrderRepository.createOnline): the server must accept the
- * order before anything lands in Room, so an officer agent_code or a missing
- * channel is rejected with the server's message right on the screen. Offline
- * creation is T5.
+ * Create-Order ViewModel (P1-T3 → offline-first in P1-T5) — same shape as
+ * NoteDetailViewModel. The save path is now OFFLINE-FIRST
+ * (OrderRepository.createLocal): the sale lands in Room as a pending CREATE and
+ * SyncWorker pushes it later, so a sale recorded in airplane mode is never lost.
+ * Validation that the server would do (positive qty/price, required channel,
+ * commission-eligible agent) is mirrored here and in the picker, so the order
+ * that reaches the server is already well-formed.
  */
 @HiltViewModel
 class OrderCreateViewModel @Inject constructor(
@@ -189,7 +191,7 @@ class OrderCreateViewModel @Inject constructor(
         _uiState.update { it.copy(isSaving = true, error = null) }
         viewModelScope.launch {
             try {
-                orderRepository.createOnline(
+                orderRepository.createLocal(
                     farmerId = farmerId,
                     agentCode = state.selectedAgentCode,
                     dealerId = null, // dealer flows are quarantined (MEA cohort)
@@ -203,7 +205,7 @@ class OrderCreateViewModel @Inject constructor(
             } catch (e: CancellationException) {
                 throw e
             } catch (e: Exception) {
-                Log.e("OrderCreate", "order create failed", e)
+                Log.e("OrderCreate", "order save failed", e)
                 _uiState.update {
                     it.copy(isSaving = false, error = e.message ?: "Failed to record sale")
                 }

@@ -28,9 +28,10 @@ import androidx.room.PrimaryKey
  * an extension_officer — the server rejects it (service guard + DB trigger).
  * It is a SOFT reference (no Room FK): the agent may not be on this device.
  *
- * pendingSync/syncAction are in place for offline-first, but the sync wiring
- * (RepositoryModule binding, refresh loops) is deliberately NOT connected —
- * that is T5. T3 creates orders online via OrderRepository.createOnline.
+ * pendingSync/syncAction drive offline-first sync (P1-T5): a sale is recorded
+ * via OrderRepository.createLocal as a pending CREATE and pushed by SyncWorker,
+ * which defers the order until its Farm (farmerId) and Agent (agentCode) parents
+ * have synced.
  */
 @Entity(
     tableName = "orders",

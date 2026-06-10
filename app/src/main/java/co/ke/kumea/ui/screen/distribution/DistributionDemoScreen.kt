@@ -16,6 +16,7 @@ import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import co.ke.kumea.util.Money
 
 /**
  * Phase 1a · T5-slice device-demo screen. Drives the attribution slice by hand
@@ -30,6 +31,8 @@ fun DistributionDemoScreen(
 ) {
     val agents by viewModel.agents.collectAsStateWithLifecycle()
     val officers by viewModel.officers.collectAsStateWithLifecycle()
+    val farms by viewModel.farms.collectAsStateWithLifecycle()
+    val orders by viewModel.orders.collectAsStateWithLifecycle()
     val log by viewModel.log.collectAsStateWithLifecycle()
     val busy by viewModel.busy.collectAsStateWithLifecycle()
 
@@ -40,6 +43,9 @@ fun DistributionDemoScreen(
     // most-recent agent overall is the farmer's referrer.
     val endorser = officers.firstOrNull()
     val referrer = agents.firstOrNull()
+    // A sale needs a registered farmer and a commission-eligible agent with a code.
+    val sellableAgent = agents.firstOrNull { it.role != "extension_officer" && it.agentCode.isNotBlank() }
+    val canSell = farms.isNotEmpty() && sellableAgent != null
 
     Scaffold(
         topBar = {
@@ -104,6 +110,17 @@ fun DistributionDemoScreen(
             }
 
             Button(
+                onClick = { viewModel.recordDemoSale() },
+                modifier = Modifier.fillMaxWidth(),
+                enabled = canSell,
+            ) {
+                Text(
+                    if (canSell) "4 · Record sale (KES 1,000 · channel=agent · ${sellableAgent?.agentCode})"
+                    else "4 · Record sale (need a farmer + village_agent)",
+                )
+            }
+
+            Button(
                 onClick = { viewModel.syncNow() },
                 modifier = Modifier.fillMaxWidth(),
                 enabled = !busy,
@@ -115,7 +132,7 @@ fun DistributionDemoScreen(
                         strokeWidth = 2.dp,
                     )
                 } else {
-                    Text("4 · Sync now (agent → farm)")
+                    Text("5 · Sync now (agent → farm → order)")
                 }
             }
 
@@ -125,6 +142,17 @@ fun DistributionDemoScreen(
                 Text(
                     "${a.role} ${a.agentCode.ifBlank { "(code pending)" }} · ${a.region}" +
                         if (a.pendingSync) " · PENDING" else "",
+                    style = MaterialTheme.typography.bodySmall,
+                )
+            }
+
+            HorizontalDivider()
+            Text("Orders on device: ${orders.size}", style = MaterialTheme.typography.titleSmall)
+            orders.forEach { o ->
+                Text(
+                    "${o.sku} ×${o.qty} · ${Money.formatCents(o.unitPrice)} · ${o.channel}" +
+                        " · ${o.agentCode ?: "no-agent"}" +
+                        if (o.pendingSync) " · PENDING" else "",
                     style = MaterialTheme.typography.bodySmall,
                 )
             }

@@ -9,6 +9,7 @@ import co.ke.kumea.data.remote.KumeaApi
 import co.ke.kumea.data.remote.dto.AgentCreateRequest
 import co.ke.kumea.data.remote.dto.AgentUpdateRequest
 import co.ke.kumea.data.sync.SyncableRepository
+import co.ke.kumea.util.AgentCode
 import kotlinx.coroutines.flow.Flow
 import kotlinx.datetime.Clock
 import java.util.UUID
@@ -62,12 +63,17 @@ class AgentRepository @Inject constructor(
     ): String {
         val now = Clock.System.now().toString()
         val id = UUID.randomUUID().toString()
+        // P1-T5: mint a provisional <PREFIX>-<REGION>-<NNN> code on device so a
+        // sale recorded in the same airplane-mode session can attribute to this
+        // agent. NNN continues the local sequence for (role, region); the server
+        // adopts this exact code on the CREATE push. Provisional-until-sync: see
+        // AgentCode for the multi-device collision caveat (zero risk on one device).
+        val existingCodes = agentDao.getCodesWithPrefix(AgentCode.codePrefix(role, region))
+        val agentCode = AgentCode.format(role, region, AgentCode.nextSeq(role, region, existingCodes))
         val agent = AgentEntity(
             id = id,
             role = role,
-            // The server generates the real agentCode (T2); a blank placeholder
-            // holds the column until the CREATE push returns the canonical row.
-            agentCode = "",
+            agentCode = agentCode,
             region = region,
             ward = ward,
             linkedContactId = linkedContactId,
@@ -136,10 +142,13 @@ class AgentRepository @Inject constructor(
                                 linkedContactId = agent.linkedContactId,
                                 linkedUserId = agent.linkedUserId,
                                 endorsedById = agent.endorsedById,
+                                // P1-T5: send the client-minted code; the server
+                                // adopts it verbatim, so it round-trips unchanged.
+                                agentCode = agent.agentCode,
                             ),
                         )
                         if (response.isSuccessful) {
-                            // Adopt the server row — it carries the generated agentCode.
+                            // Adopt the server row — it echoes back the same code.
                             val server = response.body()!!
                             agentDao.upsert(
                                 agent.copy(

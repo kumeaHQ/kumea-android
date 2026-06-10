@@ -2,6 +2,7 @@ package co.ke.kumea.data.repository
 
 import co.ke.kumea.data.local.OrderDao
 import co.ke.kumea.data.local.OrderEntity
+import co.ke.kumea.data.local.SyncAction
 import co.ke.kumea.data.local.SyncConflictDao
 import co.ke.kumea.data.local.SyncConflictEntity
 import co.ke.kumea.data.remote.FakeKumeaApi
@@ -14,6 +15,7 @@ import kotlinx.coroutines.runBlocking
 import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.ResponseBody.Companion.toResponseBody
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Assert.fail
@@ -21,9 +23,16 @@ import org.junit.Test
 import retrofit2.Response
 
 /**
- * P1-T3 money + allow-list behaviour at the repository boundary. unitPrice is a
- * Long in Room and a String on the wire; a server rejection (officer
- * agent_code) surfaces as OrderRejectedException and persists NOTHING locally.
+ * P1-T5 offline money + FK-guard behaviour at the repository boundary.
+ *
+ * The offline path is the new thing: a sale is saved with createLocal (Long
+ * cents, pending CREATE) and pushed later, with the wire Long↔String conversion
+ * happening only at push. The money canary proves cents above 2^53 survive that
+ * round-trip byte-for-byte. The FK-guard proves a missing farmer (404) or
+ * unsynced selling agent (400 agent_code_not_found) DEFERS the order (stays
+ * pending, retried) rather than crashing or silently dropping it; a permanent
+ * rejection (officer_cannot_sell) is recorded + cleared so it can't loop.
+ *
  * Plain fakes — see FakeKumeaApi for why there is no mocking library here.
  */
 class OrderRepositoryTest {
@@ -32,30 +41,60 @@ class OrderRepositoryTest {
     private val aboveTwo53Wire = "9007199254740993"
 
     private class FakeOrderDao : OrderDao {
-        val upserts = mutableListOf<OrderEntity>()
-        override fun getAllActive(): Flow<List<OrderEntity>> = flowOf(emptyList())
-        override fun getActiveByFarmer(farmerId: String): Flow<List<OrderEntity>> = flowOf(emptyList())
-        override suspend fun getPendingSync(): List<OrderEntity> = emptyList()
-        override suspend fun getLatestUpdatedAt(): String? = null
-        override suspend fun upsertAll(orders: List<OrderEntity>) {}
-        override suspend fun upsert(order: OrderEntity) { upserts.add(order) }
-        override suspend fun markSynced(orderId: String, serverUpdatedAt: String) {}
-        override suspend fun markSyncedDelete(orderId: String, deletedAt: String) {}
+        val rows = mutableMapOf<String, OrderEntity>()
+        override fun getAllActive(): Flow<List<OrderEntity>> = flowOf(rows.values.toList())
+        override fun getActiveByFarmer(farmerId: String): Flow<List<OrderEntity>> =
+            flowOf(rows.values.filter { it.farmerId == farmerId })
+        override suspend fun getPendingSync(): List<OrderEntity> =
+            rows.values.filter { it.pendingSync }.sortedBy { it.updatedAt }
+        override suspend fun getLatestUpdatedAt(): String? = rows.values.maxOfOrNull { it.updatedAt }
+        override suspend fun upsertAll(orders: List<OrderEntity>) { orders.forEach { rows[it.id] = it } }
+        override suspend fun upsert(order: OrderEntity) { rows[order.id] = order }
+        override suspend fun markSynced(orderId: String, serverUpdatedAt: String) {
+            rows[orderId]?.let {
+                rows[orderId] = it.copy(pendingSync = false, syncAction = SyncAction.UPDATE, updatedAt = serverUpdatedAt)
+            }
+        }
+        override suspend fun markSyncedDelete(orderId: String, deletedAt: String) {
+            rows[orderId]?.let { rows[orderId] = it.copy(pendingSync = false, deletedAt = deletedAt) }
+        }
     }
 
-    private class NoOpConflictDao : SyncConflictDao {
-        override suspend fun insert(conflict: SyncConflictEntity) {}
+    private class RecordingConflictDao : SyncConflictDao {
+        val inserts = mutableListOf<SyncConflictEntity>()
+        override suspend fun insert(conflict: SyncConflictEntity) { inserts.add(conflict) }
     }
 
     private fun orderResponse(req: OrderCreateRequest) = OrderResponse(
         id = req.id, farmerId = req.farmerId, agentCode = req.agentCode,
         dealerId = req.dealerId, sku = req.sku, qty = req.qty,
         unitPrice = req.unitPrice, channel = req.channel,
-        paymentStatus = "pending", date = req.date, createdAt = "t", updatedAt = "t",
+        paymentStatus = "pending", date = req.date, createdAt = "t", updatedAt = "t2",
     )
 
+    private fun errorBody(json: String) = json.toResponseBody("application/json".toMediaType())
+
     @Test
-    fun `createOnline sends cents as a wire String and stores the Long verbatim`() = runBlocking {
+    fun `createLocal stores cents as a Long and marks the row pending CREATE`() = runBlocking {
+        val dao = FakeOrderDao()
+        val repository = OrderRepository(dao, RecordingConflictDao(), FakeKumeaApi())
+
+        val id = repository.createLocal(
+            farmerId = "farm-1", agentCode = "VA-NANDI-014", dealerId = null,
+            sku = "BFX-100G", qty = 2, unitPrice = 100000L,
+            channel = "agent", date = "2026-06-10T08:00:00Z",
+        )
+
+        val stored = dao.rows.getValue(id)
+        assertEquals(100000L, stored.unitPrice) // Long cents, never Double
+        assertEquals("VA-NANDI-014", stored.agentCode)
+        assertEquals("agent", stored.channel)
+        assertTrue(stored.pendingSync)
+        assertEquals(SyncAction.CREATE, stored.syncAction)
+    }
+
+    @Test
+    fun `pushPending sends cents as a wire String and marks synced`() = runBlocking {
         val dao = FakeOrderDao()
         var sent: OrderCreateRequest? = null
         val api = object : FakeKumeaApi() {
@@ -64,65 +103,118 @@ class OrderRepositoryTest {
                 return Response.success(orderResponse(order))
             }
         }
-        val repository = OrderRepository(dao, NoOpConflictDao(), api)
-
-        val entity = repository.createOnline(
+        val repository = OrderRepository(dao, RecordingConflictDao(), api)
+        val id = repository.createLocal(
             farmerId = "farm-1", agentCode = "VA-NANDI-014", dealerId = null,
             sku = "BFX-100G", qty = 2, unitPrice = 100000L,
             channel = "agent", date = "2026-06-10T08:00:00Z",
         )
 
+        val pushed = repository.pushPending()
+
+        assertEquals(1, pushed)
         // Wire value is the exact decimal string — never a JSON number.
         assertEquals("100000", sent?.unitPrice)
         assertEquals("agent", sent?.channel)
-        assertEquals(100000L, entity.unitPrice) // Long, never Double
-        val stored = dao.upserts.single()
-        assertEquals(false, stored.pendingSync)
-        assertEquals("VA-NANDI-014", stored.agentCode)
+        assertFalse(dao.rows.getValue(id).pendingSync)
     }
 
     @Test
-    fun `createOnline round-trips cents above 2^53 byte-for-byte`() = runBlocking {
+    fun `offline money round-trips cents above 2^53 byte-for-byte`() = runBlocking {
+        val dao = FakeOrderDao()
+        var sent: OrderCreateRequest? = null
         val api = object : FakeKumeaApi() {
-            override suspend fun createOrder(order: OrderCreateRequest): Response<OrderResponse> =
-                Response.success(orderResponse(order))
+            override suspend fun createOrder(order: OrderCreateRequest): Response<OrderResponse> {
+                sent = order
+                return Response.success(orderResponse(order))
+            }
         }
-        val repository = OrderRepository(FakeOrderDao(), NoOpConflictDao(), api)
-
-        val entity = repository.createOnline(
+        val repository = OrderRepository(dao, RecordingConflictDao(), api)
+        val id = repository.createLocal(
             farmerId = "farm-1", agentCode = null, dealerId = null,
             sku = "BFX-500G", qty = 1, unitPrice = aboveTwo53,
             channel = "direct", date = "2026-06-10T08:00:00Z",
         )
 
-        assertEquals(aboveTwo53, entity.unitPrice)
+        repository.pushPending()
+
+        // Stored Long and the wire String both survive the offline path intact.
+        assertEquals(aboveTwo53, dao.rows.getValue(id).unitPrice)
+        assertEquals(aboveTwo53Wire, sent?.unitPrice)
         // Routed through Double this would corrupt: proof the discipline matters.
         assertTrue(aboveTwo53Wire.toDouble().toLong() != aboveTwo53)
     }
 
     @Test
-    fun `createOnline surfaces an officer rejection and persists nothing`() = runBlocking {
+    fun `pushPending defers when the farmer is not on the server yet (404)`() = runBlocking {
         val dao = FakeOrderDao()
-        val officerBody =
-            """{"code":"officer_cannot_sell","message":"An extension_officer can never be the commercial attribution on a sale. Officers may register farmers (referrer), never sell."}"""
+        val conflicts = RecordingConflictDao()
         val api = object : FakeKumeaApi() {
             override suspend fun createOrder(order: OrderCreateRequest): Response<OrderResponse> =
-                Response.error(400, officerBody.toResponseBody("application/json".toMediaType()))
+                Response.error(404, errorBody("""{"statusCode":404,"message":"Farmer not found","error":"Not Found"}"""))
         }
-        val repository = OrderRepository(dao, NoOpConflictDao(), api)
+        val repository = OrderRepository(dao, conflicts, api)
+        val id = repository.createLocal(
+            farmerId = "farm-not-synced", agentCode = "VA-NANDI-014", dealerId = null,
+            sku = "BFX-100G", qty = 1, unitPrice = 100000L,
+            channel = "agent", date = "2026-06-10T08:00:00Z",
+        )
 
-        try {
-            repository.createOnline(
-                farmerId = "farm-1", agentCode = "EO-NANDI-001", dealerId = null,
-                sku = "BFX-100G", qty = 1, unitPrice = 100000L,
-                channel = "agent", date = "2026-06-10T08:00:00Z",
-            )
-            fail("Expected OrderRejectedException")
-        } catch (e: OrderRejectedException) {
-            assertTrue(e.message!!.contains("extension_officer"))
+        val pushed = repository.pushPending()
+
+        // Deferred: nothing pushed, the row stays PENDING for the next cycle, and
+        // it is NOT recorded as a conflict (a missing parent is not a conflict).
+        assertEquals(0, pushed)
+        assertTrue(dao.rows.getValue(id).pendingSync)
+        assertTrue(conflicts.inserts.isEmpty())
+    }
+
+    @Test
+    fun `pushPending defers when the selling agent is not on the server yet (400 agent_code_not_found)`() = runBlocking {
+        val dao = FakeOrderDao()
+        val conflicts = RecordingConflictDao()
+        val api = object : FakeKumeaApi() {
+            override suspend fun createOrder(order: OrderCreateRequest): Response<OrderResponse> =
+                Response.error(400, errorBody("""{"code":"agent_code_not_found","message":"agentCode must reference an existing agent."}"""))
         }
-        // The rejected order never lands in Room — the queue can't be poisoned.
-        assertTrue(dao.upserts.isEmpty())
+        val repository = OrderRepository(dao, conflicts, api)
+        val id = repository.createLocal(
+            farmerId = "farm-1", agentCode = "VA-NANDI-099", dealerId = null,
+            sku = "BFX-100G", qty = 1, unitPrice = 100000L,
+            channel = "agent", date = "2026-06-10T08:00:00Z",
+        )
+
+        val pushed = repository.pushPending()
+
+        assertEquals(0, pushed)
+        assertTrue("Order with an unsynced agent must stay pending", dao.rows.getValue(id).pendingSync)
+        assertTrue(conflicts.inserts.isEmpty())
+    }
+
+    @Test
+    fun `pushPending records and clears a permanent rejection (officer_cannot_sell)`() = runBlocking {
+        val dao = FakeOrderDao()
+        val conflicts = RecordingConflictDao()
+        val officerBody =
+            """{"code":"officer_cannot_sell","message":"An extension_officer can never be the commercial attribution on a sale."}"""
+        val api = object : FakeKumeaApi() {
+            override suspend fun createOrder(order: OrderCreateRequest): Response<OrderResponse> =
+                Response.error(400, errorBody(officerBody))
+        }
+        val repository = OrderRepository(dao, conflicts, api)
+        val id = repository.createLocal(
+            farmerId = "farm-1", agentCode = "EO-NANDI-001", dealerId = null,
+            sku = "BFX-100G", qty = 1, unitPrice = 100000L,
+            channel = "agent", date = "2026-06-10T08:00:00Z",
+        )
+
+        val pushed = repository.pushPending()
+
+        // A permanent rejection must NOT loop forever: cleared + recorded, not deferred.
+        assertEquals(0, pushed)
+        assertFalse(dao.rows.getValue(id).pendingSync)
+        assertEquals(1, conflicts.inserts.size)
+        assertEquals("create_rejected", conflicts.inserts.single().conflictType)
     }
 
     @Test
