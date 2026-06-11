@@ -123,7 +123,11 @@ class DistributionDemoViewModel @Inject constructor(
             }
             val id = orderRepository.createLocal(
                 farmerId = farm.id,
-                agentCode = agent.agentCode,
+                // P1-T8 / close-gate: attribute by the agent's STABLE UUID. This is
+                // why a provisional-code collision (server reassigns the code) no
+                // longer mis-attributes — the UUID is unchanged across the reassign.
+                agentId = agent.id,
+                agentCode = agent.agentCode, // display denorm only (server re-derives)
                 dealerId = null,
                 sku = "BFX-100G",
                 qty = 1,
@@ -131,7 +135,7 @@ class DistributionDemoViewModel @Inject constructor(
                 channel = "agent",
                 date = Clock.System.now().toString(),
             )
-            append("Recorded sale (pending) order=${id.take(8)} KES 1,000 channel=agent agent=${agent.agentCode}")
+            append("Recorded sale (pending) order=${id.take(8)} KES 1,000 channel=agent agent=${agent.id.take(8)} (${agent.agentCode})")
         }
     }
 

@@ -21,7 +21,9 @@ import javax.inject.Inject
 
 data class FarmerOption(val id: String, val name: String)
 
-data class AgentOption(val agentCode: String, val role: String, val region: String)
+// id is the agent's stable UUID — the attribution key sent to the server
+// (P1-T8); agentCode/role/region are for display in the picker.
+data class AgentOption(val id: String, val agentCode: String, val role: String, val region: String)
 
 /** Biofix pack sizes. A fixed list until the SKU catalogue becomes an entity. */
 val SkuOptions = listOf("BFX-100G", "BFX-500G")
@@ -35,7 +37,8 @@ data class OrderFormState(
     // No default — channel is load-bearing and the user must choose explicitly.
     val channel: String? = null,
     val agents: List<AgentOption> = emptyList(),
-    val selectedAgentCode: String? = null,
+    // P1-T8: attribution is the agent's UUID, not the code string.
+    val selectedAgentId: String? = null,
     val isSaving: Boolean = false,
     val error: String? = null,
 ) {
@@ -111,7 +114,7 @@ class OrderCreateViewModel @Inject constructor(
             agentRepository.getAllActive().collect { agents ->
                 val options = agents
                     .filter { it.role != "extension_officer" && it.agentCode.isNotBlank() }
-                    .map { AgentOption(it.agentCode, it.role, it.region) }
+                    .map { AgentOption(it.id, it.agentCode, it.role, it.region) }
                 _uiState.update { it.copy(agents = options) }
             }
         }
@@ -130,8 +133,8 @@ class OrderCreateViewModel @Inject constructor(
                     }
                     if (mine != null) {
                         _uiState.update { state ->
-                            if (state.selectedAgentCode == null) {
-                                state.copy(selectedAgentCode = mine.agentCode)
+                            if (state.selectedAgentId == null) {
+                                state.copy(selectedAgentId = mine.id)
                             } else {
                                 state
                             }
@@ -153,8 +156,8 @@ class OrderCreateViewModel @Inject constructor(
     fun onChannelSelected(channel: String) = _uiState.update { it.copy(channel = channel) }
 
     /** Toggle an agent chip — tapping the selected one clears it (optional field). */
-    fun onAgentSelected(agentCode: String?) = _uiState.update {
-        it.copy(selectedAgentCode = if (it.selectedAgentCode == agentCode) null else agentCode)
+    fun onAgentSelected(agentId: String?) = _uiState.update {
+        it.copy(selectedAgentId = if (it.selectedAgentId == agentId) null else agentId)
     }
 
     fun saveOrder(onSuccess: () -> Unit) {
@@ -188,12 +191,17 @@ class OrderCreateViewModel @Inject constructor(
             return
         }
 
+        // P1-T8: attribute by the agent's stable UUID. agentCode tags along as
+        // the device's display denorm — the server re-derives the stored code.
+        val selectedAgent = state.agents.firstOrNull { it.id == state.selectedAgentId }
+
         _uiState.update { it.copy(isSaving = true, error = null) }
         viewModelScope.launch {
             try {
                 orderRepository.createLocal(
                     farmerId = farmerId,
-                    agentCode = state.selectedAgentCode,
+                    agentId = state.selectedAgentId,
+                    agentCode = selectedAgent?.agentCode,
                     dealerId = null, // dealer flows are quarantined (MEA cohort)
                     sku = state.sku,
                     qty = qty,

@@ -7,7 +7,7 @@ import kotlinx.serialization.json.jsonPrimitive
 
 /**
  * Extract the machine-readable `code` from a NestJS error body. The service
- * guards throw `{"code":"agent_code_not_found","message":"..."}`-shaped bodies;
+ * guards throw `{"code":"agent_not_found","message":"..."}`-shaped bodies;
  * the FK-defer logic in OrderRepository/FarmRepository keys off that code to tell
  * "FK parent not synced yet" (defer + retry) apart from a permanent rejection.
  *

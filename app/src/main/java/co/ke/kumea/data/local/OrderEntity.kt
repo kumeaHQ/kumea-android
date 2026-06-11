@@ -24,13 +24,21 @@ import androidx.room.PrimaryKey
  * verbatim as lowercase Strings (same convention as AgentEntity.role); the
  * valid set is OrderChannels.
  *
- * agentCode is the COMMERCIAL attribution (who sold) and can never resolve to
- * an extension_officer — the server rejects it (service guard + DB trigger).
- * It is a SOFT reference (no Room FK): the agent may not be on this device.
+ * agentId is the COMMERCIAL attribution (who sold) — the selling Agent's STABLE
+ * UUID (P1-T8). It can never resolve to an extension_officer (the server rejects
+ * it: service guard + DB trigger). The device already holds this UUID because it
+ * created the agent locally, so attribution is correct even before the agent's
+ * code is server-canonicalised — the UUID is stable across the
+ * provisional→canonical code transition. SOFT reference (no Room FK): the agent
+ * may not be on this device.
+ *
+ * agentCode is a DISPLAY denormalization ONLY, not the attribution key — a
+ * server-owned, reassignable label. The server re-derives the stored code from
+ * agentId, so the device's provisional code is never the source of truth.
  *
  * pendingSync/syncAction drive offline-first sync (P1-T5): a sale is recorded
  * via OrderRepository.createLocal as a pending CREATE and pushed by SyncWorker,
- * which defers the order until its Farm (farmerId) and Agent (agentCode) parents
+ * which defers the order until its Farm (farmerId) and Agent (agentId) parents
  * have synced.
  */
 @Entity(
@@ -50,6 +58,9 @@ import androidx.room.PrimaryKey
 data class OrderEntity(
     @PrimaryKey val id: String,
     val farmerId: String,
+    // P1-T8: the selling agent's STABLE UUID — the authoritative attribution.
+    val agentId: String?,
+    // Display-only denormalization (server-derived from agentId); never the key.
     val agentCode: String?,
     val dealerId: String?,
     val sku: String,

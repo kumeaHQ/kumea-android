@@ -9,6 +9,9 @@ import kotlinx.serialization.Serializable
  */
 @Serializable
 data class OrderUpdateRequest(
+    // P1-T8: attribution is by the agent's stable UUID; agentCode is display-only
+    // and re-derived server-side from agentId.
+    val agentId: String? = null,
     val agentCode: String? = null,
     val dealerId: String? = null,
     val sku: String? = null,

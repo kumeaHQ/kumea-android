@@ -199,8 +199,10 @@ fun OrderCreateScreen(
                 Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
                     state.agents.forEach { agent ->
                         FilterChip(
-                            selected = state.selectedAgentCode == agent.agentCode,
-                            onClick = { viewModel.onAgentSelected(agent.agentCode) },
+                            // Selection keys on the stable UUID (attribution);
+                            // the label still shows the human-readable code.
+                            selected = state.selectedAgentId == agent.id,
+                            onClick = { viewModel.onAgentSelected(agent.id) },
                             label = { Text("${agent.agentCode} (${agent.role}, ${agent.region})") },
                         )
                     }

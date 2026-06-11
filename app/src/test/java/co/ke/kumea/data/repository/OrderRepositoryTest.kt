@@ -29,7 +29,7 @@ import retrofit2.Response
  * cents, pending CREATE) and pushed later, with the wire Long↔String conversion
  * happening only at push. The money canary proves cents above 2^53 survive that
  * round-trip byte-for-byte. The FK-guard proves a missing farmer (404) or
- * unsynced selling agent (400 agent_code_not_found) DEFERS the order (stays
+ * unsynced selling agent (400 agent_not_found) DEFERS the order (stays
  * pending, retried) rather than crashing or silently dropping it; a permanent
  * rejection (officer_cannot_sell) is recorded + cleared so it can't loop.
  *
@@ -66,7 +66,7 @@ class OrderRepositoryTest {
     }
 
     private fun orderResponse(req: OrderCreateRequest) = OrderResponse(
-        id = req.id, farmerId = req.farmerId, agentCode = req.agentCode,
+        id = req.id, farmerId = req.farmerId, agentId = req.agentId, agentCode = req.agentCode,
         dealerId = req.dealerId, sku = req.sku, qty = req.qty,
         unitPrice = req.unitPrice, channel = req.channel,
         paymentStatus = "pending", date = req.date, createdAt = "t", updatedAt = "t2",
@@ -80,14 +80,15 @@ class OrderRepositoryTest {
         val repository = OrderRepository(dao, RecordingConflictDao(), FakeKumeaApi())
 
         val id = repository.createLocal(
-            farmerId = "farm-1", agentCode = "VA-NANDI-014", dealerId = null,
+            farmerId = "farm-1", agentId = "agent-va-uuid", agentCode = "VA-NANDI-014", dealerId = null,
             sku = "BFX-100G", qty = 2, unitPrice = 100000L,
             channel = "agent", date = "2026-06-10T08:00:00Z",
         )
 
         val stored = dao.rows.getValue(id)
         assertEquals(100000L, stored.unitPrice) // Long cents, never Double
-        assertEquals("VA-NANDI-014", stored.agentCode)
+        assertEquals("agent-va-uuid", stored.agentId) // UUID is the attribution key
+        assertEquals("VA-NANDI-014", stored.agentCode) // display denorm only
         assertEquals("agent", stored.channel)
         assertTrue(stored.pendingSync)
         assertEquals(SyncAction.CREATE, stored.syncAction)
@@ -105,7 +106,7 @@ class OrderRepositoryTest {
         }
         val repository = OrderRepository(dao, RecordingConflictDao(), api)
         val id = repository.createLocal(
-            farmerId = "farm-1", agentCode = "VA-NANDI-014", dealerId = null,
+            farmerId = "farm-1", agentId = "agent-va-uuid", agentCode = "VA-NANDI-014", dealerId = null,
             sku = "BFX-100G", qty = 2, unitPrice = 100000L,
             channel = "agent", date = "2026-06-10T08:00:00Z",
         )
@@ -119,6 +120,8 @@ class OrderRepositoryTest {
         // Wire value is the exact decimal string — never a JSON number.
         assertEquals("100000", sent?.unitPrice)
         assertEquals("agent", sent?.channel)
+        // P1-T8: the stable UUID is sent as the attribution key.
+        assertEquals("agent-va-uuid", sent?.agentId)
         assertFalse(dao.rows.getValue(id).pendingSync)
     }
 
@@ -134,7 +137,7 @@ class OrderRepositoryTest {
         }
         val repository = OrderRepository(dao, RecordingConflictDao(), api)
         val id = repository.createLocal(
-            farmerId = "farm-1", agentCode = null, dealerId = null,
+            farmerId = "farm-1", agentId = null, agentCode = null, dealerId = null,
             sku = "BFX-500G", qty = 1, unitPrice = aboveTwo53,
             channel = "direct", date = "2026-06-10T08:00:00Z",
         )
@@ -158,7 +161,7 @@ class OrderRepositoryTest {
         }
         val repository = OrderRepository(dao, conflicts, api)
         val id = repository.createLocal(
-            farmerId = "farm-not-synced", agentCode = "VA-NANDI-014", dealerId = null,
+            farmerId = "farm-not-synced", agentId = "agent-va-uuid", agentCode = "VA-NANDI-014", dealerId = null,
             sku = "BFX-100G", qty = 1, unitPrice = 100000L,
             channel = "agent", date = "2026-06-10T08:00:00Z",
         )
@@ -177,16 +180,16 @@ class OrderRepositoryTest {
     }
 
     @Test
-    fun `pushPending defers when the selling agent is not on the server yet (400 agent_code_not_found)`() = runBlocking {
+    fun `pushPending defers when the selling agent is not on the server yet (400 agent_not_found)`() = runBlocking {
         val dao = FakeOrderDao()
         val conflicts = RecordingConflictDao()
         val api = object : FakeKumeaApi() {
             override suspend fun createOrder(order: OrderCreateRequest): Response<OrderResponse> =
-                Response.error(400, errorBody("""{"code":"agent_code_not_found","message":"agentCode must reference an existing agent."}"""))
+                Response.error(400, errorBody("""{"code":"agent_not_found","message":"agentId must reference an existing agent."}"""))
         }
         val repository = OrderRepository(dao, conflicts, api)
         val id = repository.createLocal(
-            farmerId = "farm-1", agentCode = "VA-NANDI-099", dealerId = null,
+            farmerId = "farm-1", agentId = "agent-not-synced-uuid", agentCode = "VA-NANDI-099", dealerId = null,
             sku = "BFX-100G", qty = 1, unitPrice = 100000L,
             channel = "agent", date = "2026-06-10T08:00:00Z",
         )
@@ -211,7 +214,7 @@ class OrderRepositoryTest {
         }
         val repository = OrderRepository(dao, conflicts, api)
         val id = repository.createLocal(
-            farmerId = "farm-1", agentCode = "EO-NANDI-001", dealerId = null,
+            farmerId = "farm-1", agentId = "agent-eo-uuid", agentCode = "EO-NANDI-001", dealerId = null,
             sku = "BFX-100G", qty = 1, unitPrice = 100000L,
             channel = "agent", date = "2026-06-10T08:00:00Z",
         )

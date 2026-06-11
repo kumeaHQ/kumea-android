@@ -31,14 +31,14 @@ import javax.inject.Singleton
  * Double anywhere — values above 2^53 cents survive byte-for-byte.
  *
  * FK-GUARD (the real safety net, not Set iteration order): an Order reads from
- * Farm (farmerId) and resolves an Agent (agentCode). If either parent hasn't
- * synced yet, pushPending() DEFERS the order — leaves pendingSync=true, skips it
- * this cycle, retries next cycle once the parent lands. A deferral is never a
- * silent skip: the row stays visibly PENDING and the PushReport records it
- * (deferred, with reason). Every non-2xx is surfaced in the report.
+ * Farm (farmerId) and resolves an Agent (agentId — P1-T8). If either parent
+ * hasn't synced yet, pushPending() DEFERS the order — leaves pendingSync=true,
+ * skips it this cycle, retries next cycle once the parent lands. A deferral is
+ * never a silent skip: the row stays visibly PENDING and the PushReport records
+ * it (deferred, with reason). Every non-2xx is surfaced in the report.
  *
  * THE OFFICER ALLOW-LIST is enforced server-side (service guard + DB trigger):
- * an extension_officer agentCode is rejected. The create screen's agent picker
+ * an extension_officer agentId is rejected. The create screen's agent picker
  * already excludes officers, so this is a backstop — a permanent rejection is
  * recorded and cleared (never looped) rather than poisoning the pending queue.
  */
@@ -68,6 +68,7 @@ class OrderRepository @Inject constructor(
      */
     suspend fun createLocal(
         farmerId: String,
+        agentId: String?,
         agentCode: String?,
         dealerId: String?,
         sku: String,
@@ -81,6 +82,9 @@ class OrderRepository @Inject constructor(
         val order = OrderEntity(
             id = id,
             farmerId = farmerId,
+            // P1-T8: the agent's stable UUID is the attribution key; the code
+            // tags along as the device's display denorm (the server re-derives it).
+            agentId = agentId,
             agentCode = agentCode,
             dealerId = dealerId,
             sku = sku,
@@ -102,7 +106,7 @@ class OrderRepository @Inject constructor(
 
     /**
      * Push all pending local changes to the server. CREATE applies the FK-guard:
-     * a 404 (farmer not on server) or 400 agent_code_not_found (selling agent not
+     * a 404 (farmer not on server) or 400 agent_not_found (selling agent not
      * on server) DEFERS the order for a later cycle; a 409 is server-wins; any
      * other rejection is permanent (recorded + cleared, never looped). A network
      * failure propagates so WorkManager / the refresh caller retries with backoff
@@ -121,6 +125,9 @@ class OrderRepository @Inject constructor(
                     val response = api.createOrder(
                         OrderCreateRequest(
                             id = order.id,
+                            // P1-T8: the UUID is the attribution key the server
+                            // resolves; agentCode is display-only (server-derived).
+                            agentId = order.agentId,
                             farmerId = order.farmerId,
                             agentCode = order.agentCode,
                             dealerId = order.dealerId,
@@ -175,6 +182,7 @@ class OrderRepository @Inject constructor(
                     val response = api.updateOrder(
                         order.id,
                         OrderUpdateRequest(
+                            agentId = order.agentId,
                             agentCode = order.agentCode,
                             dealerId = order.dealerId,
                             sku = order.sku,
@@ -229,6 +237,7 @@ class OrderRepository @Inject constructor(
             OrderEntity(
                 id = server.id,
                 farmerId = server.farmerId,
+                agentId = server.agentId,
                 agentCode = server.agentCode,
                 dealerId = server.dealerId,
                 sku = server.sku,
@@ -259,12 +268,14 @@ class OrderRepository @Inject constructor(
      * The order's FK parent isn't on the server yet → defer + retry, never a hard
      * fail. Two signals from the OrdersService contract:
      *   • 404 "Farmer not found" — the Farm (farmerId) hasn't synced (assertFarmOwned).
-     *   • 400 agent_code_not_found — the selling Agent hasn't synced (assertSaleAttribution).
+     *   • 400 agent_not_found — the selling Agent (agentId) hasn't synced (P1-T8
+     *     resolveSaleAgent). The selling agent is pushed before the order, but if
+     *     that push hasn't landed yet we defer rather than drop the attribution.
      * Everything else (officer_cannot_sell, validation, 409) is NOT a deferral.
      */
     private fun isFkParentMissing(httpCode: Int, errorBody: String?): Boolean {
         if (httpCode == 404) return true
-        if (httpCode == 400 && parseErrorCode(errorBody) == "agent_code_not_found") return true
+        if (httpCode == 400 && parseErrorCode(errorBody) == "agent_not_found") return true
         return false
     }
 
