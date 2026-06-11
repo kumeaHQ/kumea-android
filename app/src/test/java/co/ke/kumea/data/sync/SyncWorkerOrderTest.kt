@@ -25,7 +25,10 @@ class SyncWorkerOrderTest {
         private val pushCount: Int = 0,
         private val pullCount: Int = 0,
     ) : SyncableRepository {
-        override suspend fun pushPending(): Int { records.add(CallRecord(name, "push")); return pushCount }
+        override suspend fun pushPending(): PushReport {
+            records.add(CallRecord(name, "push"))
+            return PushReport(repo = name, found = pushCount, attempted = pushCount, succeeded = pushCount)
+        }
         override suspend fun pullSince(): Int {
             if (failOnPull) throw IllegalStateException("$name: FK guard missing")
             records.add(CallRecord(name, "pull"))
@@ -164,7 +167,7 @@ class SyncWorkerOrderTest {
         )
         var pushed = 0
         var pulled = 0
-        for (repo in repos) { pushed += repo.pushPending(); pulled += repo.pullSince() }
+        for (repo in repos) { pushed += repo.pushPending().succeeded; pulled += repo.pullSince() }
         assertEquals(4, pushed)
         assertEquals(6, pulled)
         assertTrue("Data moved → worker would notify", pushed + pulled > 0)
@@ -180,7 +183,7 @@ class SyncWorkerOrderTest {
             TrackingRepo("note", records),
         )
         var moved = 0
-        for (repo in repos) { moved += repo.pushPending(); moved += repo.pullSince() }
+        for (repo in repos) { moved += repo.pushPending().succeeded; moved += repo.pullSince() }
         assertEquals("Nothing pending, nothing pulled → silent", 0, moved)
     }
 }

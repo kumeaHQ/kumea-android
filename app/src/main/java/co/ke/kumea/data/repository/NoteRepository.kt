@@ -15,6 +15,8 @@ import java.util.UUID
 import javax.inject.Inject
 import javax.inject.Singleton
 import kotlinx.datetime.Clock
+import co.ke.kumea.data.sync.PushReport
+import co.ke.kumea.data.sync.PushReportBuilder
 import co.ke.kumea.data.sync.SyncableRepository
 
 /**
@@ -123,74 +125,74 @@ class NoteRepository @Inject constructor(
      * Push all pending local changes to the server.
      * Called by the sync trigger (manual refresh today; SyncWorker later).
      */
-    override suspend fun pushPending(): Int {
+    override suspend fun pushPending(): PushReport {
         val pending = noteDao.getPendingSync()
-        var pushed = 0
+        val report = PushReportBuilder("Notes")
+        report.found = pending.size
         for (note in pending) {
-            try {
-                when (note.syncAction) {
-                    SyncAction.CREATE -> {
-                        val response = api.createNote(
-                            NoteCreateRequest(
-                                id = note.id,
-                                fieldId = note.fieldId,
-                                type = note.type.name,
-                                body = note.body,
-                                // Long → wire String. Null stays null (ACTIVITY w/o cost).
-                                amountCents = note.amountCents?.toString(),
-                                // Enum → wire String (the name). Null = uncategorised.
-                                costCategory = note.costCategory?.name,
-                                occurredAt = note.occurredAt,
-                            )
+            when (note.syncAction) {
+                SyncAction.CREATE -> {
+                    val response = api.createNote(
+                        NoteCreateRequest(
+                            id = note.id,
+                            fieldId = note.fieldId,
+                            type = note.type.name,
+                            body = note.body,
+                            // Long → wire String. Null stays null (ACTIVITY w/o cost).
+                            amountCents = note.amountCents?.toString(),
+                            // Enum → wire String (the name). Null = uncategorised.
+                            costCategory = note.costCategory?.name,
+                            occurredAt = note.occurredAt,
                         )
-                        if (response.isSuccessful) {
-                            val serverNote = response.body()!!
-                            noteDao.markSynced(note.id, serverNote.updatedAt)
-                            pushed++
-                        } else if (response.code() == 409) {
-                            val serverBody = response.errorBody()?.string() ?: "{}"
-                            recordConflict(note, serverBody, "create_409")
-                            noteDao.upsert(note.copy(pendingSync = false))
-                        }
-                    }
-                    SyncAction.UPDATE -> {
-                        val response = api.updateNote(
-                            note.id,
-                            NoteUpdateRequest(
-                                type = note.type.name,
-                                body = note.body,
-                                amountCents = note.amountCents?.toString(),
-                                costCategory = note.costCategory?.name,
-                                occurredAt = note.occurredAt,
-                                updatedAt = note.updatedAt,
-                            )
-                        )
-                        if (response.isSuccessful) {
-                            val serverNote = response.body()!!
-                            noteDao.markSynced(note.id, serverNote.updatedAt)
-                            pushed++
-                        } else if (response.code() == 409) {
-                            val serverBody = response.errorBody()?.string() ?: "{}"
-                            recordConflict(note, serverBody, "update_409")
-                            noteDao.upsert(note.copy(pendingSync = false))
-                        }
-                    }
-                    SyncAction.DELETE -> {
-                        val response = api.deleteNote(note.id)
-                        if (response.isSuccessful) {
-                            val now = Clock.System.now().toString()
-                            noteDao.markSyncedDelete(note.id, note.deletedAt ?: now)
-                            pushed++
-                        }
+                    )
+                    if (response.isSuccessful) {
+                        noteDao.markSynced(note.id, response.body()!!.updatedAt)
+                        report.succeeded()
+                    } else if (response.code() == 409) {
+                        recordConflict(note, response.errorBody()?.string() ?: "{}", "create_409")
+                        noteDao.upsert(note.copy(pendingSync = false))
+                        report.failed("409")
+                    } else {
+                        // Left pending; surfaced with its status (no silent skip).
+                        report.failed(response.code().toString())
                     }
                 }
-            } catch (e: Exception) {
-                // Network error — re-throw so the caller (refresh / WorkManager)
-                // can retry with backoff.
-                throw e
+                SyncAction.UPDATE -> {
+                    val response = api.updateNote(
+                        note.id,
+                        NoteUpdateRequest(
+                            type = note.type.name,
+                            body = note.body,
+                            amountCents = note.amountCents?.toString(),
+                            costCategory = note.costCategory?.name,
+                            occurredAt = note.occurredAt,
+                            updatedAt = note.updatedAt,
+                        )
+                    )
+                    if (response.isSuccessful) {
+                        noteDao.markSynced(note.id, response.body()!!.updatedAt)
+                        report.succeeded()
+                    } else if (response.code() == 409) {
+                        recordConflict(note, response.errorBody()?.string() ?: "{}", "update_409")
+                        noteDao.upsert(note.copy(pendingSync = false))
+                        report.failed("409")
+                    } else {
+                        report.failed(response.code().toString())
+                    }
+                }
+                SyncAction.DELETE -> {
+                    val response = api.deleteNote(note.id)
+                    if (response.isSuccessful) {
+                        val now = Clock.System.now().toString()
+                        noteDao.markSyncedDelete(note.id, note.deletedAt ?: now)
+                        report.succeeded()
+                    } else {
+                        report.failed(response.code().toString())
+                    }
+                }
             }
         }
-        return pushed
+        return report.build()
     }
 
     /**

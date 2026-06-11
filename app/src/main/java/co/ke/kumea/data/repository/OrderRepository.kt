@@ -9,6 +9,8 @@ import co.ke.kumea.data.remote.KumeaApi
 import co.ke.kumea.data.remote.dto.OrderCreateRequest
 import co.ke.kumea.data.remote.dto.OrderUpdateRequest
 import co.ke.kumea.data.remote.parseErrorCode
+import co.ke.kumea.data.sync.PushReport
+import co.ke.kumea.data.sync.PushReportBuilder
 import co.ke.kumea.data.sync.SyncableRepository
 import kotlinx.coroutines.flow.Flow
 import kotlinx.datetime.Clock
@@ -32,7 +34,8 @@ import javax.inject.Singleton
  * Farm (farmerId) and resolves an Agent (agentCode). If either parent hasn't
  * synced yet, pushPending() DEFERS the order — leaves pendingSync=true, skips it
  * this cycle, retries next cycle once the parent lands. A deferral is never a
- * silent skip: the row stays visibly PENDING and the pushed count reflects it.
+ * silent skip: the row stays visibly PENDING and the PushReport records it
+ * (deferred, with reason). Every non-2xx is surfaced in the report.
  *
  * THE OFFICER ALLOW-LIST is enforced server-side (service guard + DB trigger):
  * an extension_officer agentCode is rejected. The create screen's agent picker
@@ -52,9 +55,6 @@ class OrderRepository @Inject constructor(
     /** Observe active orders for a single farmer (farm). */
     fun getActiveByFarmer(farmerId: String): Flow<List<OrderEntity>> =
         orderDao.getActiveByFarmer(farmerId)
-
-    /** How many orders are still waiting to push — lets a caller surface FK deferrals. */
-    suspend fun countPendingSync(): Int = orderDao.getPendingSync().size
 
     /**
      * Record a sale OFFLINE-FIRST (the T5 path): save to Room as a pending
@@ -111,9 +111,10 @@ class OrderRepository @Inject constructor(
      * Offline UPDATE/DELETE of a pending order is out of scope for P1-T5
      * (CREATE-only); those branches stay as the T3 contract left them.
      */
-    override suspend fun pushPending(): Int {
+    override suspend fun pushPending(): PushReport {
         val pending = orderDao.getPendingSync()
-        var pushed = 0
+        val report = PushReportBuilder("Orders")
+        report.found = pending.size
         for (order in pending) {
             when (order.syncAction) {
                 SyncAction.CREATE -> {
@@ -134,28 +135,38 @@ class OrderRepository @Inject constructor(
                     )
                     if (response.isSuccessful) {
                         orderDao.markSynced(order.id, response.body()!!.updatedAt)
-                        pushed++
+                        report.succeeded()
                     } else {
                         // errorBody().string() consumes the buffer — read it once.
                         val body = response.errorBody()?.string()
+                        val code = response.code()
                         when {
-                            isFkParentMissing(response.code(), body) -> {
+                            isFkParentMissing(code, body) -> {
                                 // DEFER: farmer or selling agent not on the server
                                 // yet. Leave pendingSync=true; the next cycle retries
                                 // once the parent lands. Not a silent skip — the row
-                                // stays PENDING and is re-pushed (FK ordering safety
-                                // net, independent of Set iteration order).
+                                // stays PENDING and the report records the deferral.
+                                report.deferred("FK parent not synced yet")
                             }
-                            response.code() == 409 -> {
+                            code == 409 -> {
                                 recordConflict(order, body ?: "{}", "create_409")
                                 orderDao.upsert(order.copy(pendingSync = false))
+                                report.failed("409")
                             }
-                            else -> {
+                            code == 400 -> {
                                 // Permanent rejection (officer_cannot_sell, validation).
                                 // Record + clear so a barred order can't loop forever;
                                 // the UI already prevents these from being created.
                                 recordConflict(order, body ?: "{}", "create_rejected")
                                 orderDao.upsert(order.copy(pendingSync = false))
+                                report.failed("400")
+                            }
+                            else -> {
+                                // Transient (401 stale token, 5xx server). Leave the
+                                // row PENDING and surface the status loudly — the
+                                // TokenAuthenticator refreshes a 401 before we ever
+                                // see it, so a 401 here means refresh itself failed.
+                                report.failed(code.toString())
                             }
                         }
                     }
@@ -177,10 +188,13 @@ class OrderRepository @Inject constructor(
                     )
                     if (response.isSuccessful) {
                         orderDao.markSynced(order.id, response.body()!!.updatedAt)
-                        pushed++
+                        report.succeeded()
                     } else if (response.code() == 409) {
                         recordConflict(order, response.errorBody()?.string() ?: "{}", "update_409")
                         orderDao.upsert(order.copy(pendingSync = false))
+                        report.failed("409")
+                    } else {
+                        report.failed(response.code().toString())
                     }
                 }
                 SyncAction.DELETE -> {
@@ -188,12 +202,14 @@ class OrderRepository @Inject constructor(
                     if (response.isSuccessful) {
                         val now = Clock.System.now().toString()
                         orderDao.markSyncedDelete(order.id, order.deletedAt ?: now)
-                        pushed++
+                        report.succeeded()
+                    } else {
+                        report.failed(response.code().toString())
                     }
                 }
             }
         }
-        return pushed
+        return report.build()
     }
 
     /**

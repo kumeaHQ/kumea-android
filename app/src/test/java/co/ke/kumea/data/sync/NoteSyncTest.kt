@@ -102,13 +102,13 @@ class NoteSyncTest {
         }
         val repository = NoteRepository(dao, NoOpConflictDao(), api)
 
-        val pushed = repository.pushPending()
+        val report = repository.pushPending()
 
         // Wire value is the exact decimal string — not a Number, no precision loss.
         assertEquals(aboveTwo53Wire, sent?.amountCents)
         assertEquals("note-1" to "t2", dao.markSyncedCalls.single())
-        // Ticket 2.3: a successful push reports one row moved.
-        assertEquals(1, pushed)
+        // Ticket 2.3 / P1-T5a: a successful push reports one row succeeded.
+        assertEquals(1, report.succeeded)
     }
 
     @Test

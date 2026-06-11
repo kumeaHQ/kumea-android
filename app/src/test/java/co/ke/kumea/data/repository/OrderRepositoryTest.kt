@@ -110,9 +110,12 @@ class OrderRepositoryTest {
             channel = "agent", date = "2026-06-10T08:00:00Z",
         )
 
-        val pushed = repository.pushPending()
+        val report = repository.pushPending()
 
-        assertEquals(1, pushed)
+        assertEquals(1, report.found)
+        assertEquals(1, report.attempted)
+        assertEquals(1, report.succeeded)
+        assertEquals(0, report.failed)
         // Wire value is the exact decimal string — never a JSON number.
         assertEquals("100000", sent?.unitPrice)
         assertEquals("agent", sent?.channel)
@@ -160,11 +163,15 @@ class OrderRepositoryTest {
             channel = "agent", date = "2026-06-10T08:00:00Z",
         )
 
-        val pushed = repository.pushPending()
+        val report = repository.pushPending()
 
         // Deferred: nothing pushed, the row stays PENDING for the next cycle, and
         // it is NOT recorded as a conflict (a missing parent is not a conflict).
-        assertEquals(0, pushed)
+        // The report says WHY (deferred, with reason) — never silent.
+        assertEquals(0, report.succeeded)
+        assertEquals(0, report.attempted)
+        assertEquals(1, report.deferred)
+        assertEquals(0, report.failed)
         assertTrue(dao.rows.getValue(id).pendingSync)
         assertTrue(conflicts.inserts.isEmpty())
     }
@@ -184,9 +191,10 @@ class OrderRepositoryTest {
             channel = "agent", date = "2026-06-10T08:00:00Z",
         )
 
-        val pushed = repository.pushPending()
+        val report = repository.pushPending()
 
-        assertEquals(0, pushed)
+        assertEquals(0, report.succeeded)
+        assertEquals(1, report.deferred)
         assertTrue("Order with an unsynced agent must stay pending", dao.rows.getValue(id).pendingSync)
         assertTrue(conflicts.inserts.isEmpty())
     }
@@ -208,10 +216,14 @@ class OrderRepositoryTest {
             channel = "agent", date = "2026-06-10T08:00:00Z",
         )
 
-        val pushed = repository.pushPending()
+        val report = repository.pushPending()
 
-        // A permanent rejection must NOT loop forever: cleared + recorded, not deferred.
-        assertEquals(0, pushed)
+        // A permanent rejection must NOT loop forever: cleared + recorded, and
+        // surfaced as failed (400) in the report — not deferred, not silent.
+        assertEquals(0, report.succeeded)
+        assertEquals(0, report.deferred)
+        assertEquals(1, report.failed)
+        assertEquals("400", report.failures.single())
         assertFalse(dao.rows.getValue(id).pendingSync)
         assertEquals(1, conflicts.inserts.size)
         assertEquals("create_rejected", conflicts.inserts.single().conflictType)

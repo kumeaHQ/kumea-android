@@ -83,11 +83,14 @@ class FarmSyncTest {
             waterSource = null, referrerAgentId = "agent-not-synced",
         )
 
-        val pushed = repository.pushPending()
+        val report = repository.pushPending()
 
         // Deferred: nothing pushed, the row stays PENDING for the next cycle once
-        // the referrer agent lands, and it is NOT recorded as a conflict.
-        assertEquals(0, pushed)
+        // the referrer agent lands, and it is NOT recorded as a conflict. The
+        // report surfaces it as deferred (with reason) — never silent.
+        assertEquals(0, report.succeeded)
+        assertEquals(1, report.deferred)
+        assertEquals(0, report.failed)
         assertTrue(farmDao.rows.getValue(id).pendingSync)
         assertTrue(conflicts.inserts.isEmpty())
     }

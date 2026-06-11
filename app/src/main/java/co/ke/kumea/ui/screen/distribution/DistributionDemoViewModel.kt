@@ -148,18 +148,18 @@ class DistributionDemoViewModel @Inject constructor(
         viewModelScope.launch {
             _busy.value = true
             try {
-                val ap = agentRepository.pushPending()
-                val al = agentRepository.pullSince()
-                append("Agents synced: $ap pushed, $al pulled")
-                val fp = farmRepository.pushPending()
-                val fl = farmRepository.pullSince()
-                append("Farms synced: $fp pushed, $fl pulled")
-                val op = orderRepository.pushPending()
-                val ol = orderRepository.pullSince()
-                val deferred = orderRepository.countPendingSync()
-                val deferNote =
-                    if (deferred > 0) " — $deferred deferred (FK parent not synced yet, will retry)" else ""
-                append("Orders synced: $op pushed, $ol pulled$deferNote")
+                // Each push emits the full per-repo report (found/attempted/
+                // succeeded/failed+status/deferred+reason) — the same diagnostic
+                // the SyncWorker logs, surfaced on-screen for the device gate.
+                val agentReport = agentRepository.pushPending()
+                val agentPulled = agentRepository.pullSince()
+                append("${agentReport.line()}, pulled $agentPulled")
+                val farmReport = farmRepository.pushPending()
+                val farmPulled = farmRepository.pullSince()
+                append("${farmReport.line()}, pulled $farmPulled")
+                val orderReport = orderRepository.pushPending()
+                val orderPulled = orderRepository.pullSince()
+                append("${orderReport.line()}, pulled $orderPulled")
             } catch (e: CancellationException) {
                 throw e
             } catch (e: Exception) {

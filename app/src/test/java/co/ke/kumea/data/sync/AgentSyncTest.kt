@@ -119,9 +119,10 @@ class AgentSyncTest {
         val id = repo.createLocal(role = "village_agent", region = "Nandi")
         dao.pending = listOf(dao.rows.getValue(id))
 
-        val pushed = repo.pushPending()
+        val report = repo.pushPending()
 
-        assertEquals(1, pushed)
+        assertEquals(1, report.succeeded)
+        assertEquals("Agents", report.repo)
         assertEquals("VA-NANDI-001", sentCode)
         val synced = dao.rows.getValue(id)
         assertEquals("VA-NANDI-001", synced.agentCode)
