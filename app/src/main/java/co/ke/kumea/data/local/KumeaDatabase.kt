@@ -11,14 +11,17 @@ import androidx.room.RoomDatabase
  * Phase 1a · T5-slice: AgentEntity added; FarmEntity.referrerAgentId column
  *   added (version 5 → 6).
  * P1-T3: OrderEntity added (version 6 → 7).
+ * P1-T8: OrderEntity.agentId column added — attribution by stable Agent UUID
+ *   (version 7 → 8).
  *
  * fallbackToDestructiveMigration() is safe here — no real users yet, and
  * the Sprint 0 schema contains only development/seed data. A proper migration
- * would be pure ceremony until we ship to production users.
+ * would be pure ceremony until we ship to production users (the dev device
+ * recreates fresh data carrying agentId directly — see P1-T8).
  */
 @Database(
     entities = [AgentEntity::class, FarmEntity::class, FieldEntity::class, NoteEntity::class, OrderEntity::class, SyncConflictEntity::class],
-    version = 7,
+    version = 8,
     exportSchema = true,
 )
 abstract class KumeaDatabase : RoomDatabase() {

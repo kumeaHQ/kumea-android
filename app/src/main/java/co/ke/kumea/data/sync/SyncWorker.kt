@@ -46,7 +46,12 @@ class SyncWorker @AssistedInject constructor(
             var pushed = 0
             var pulled = 0
             for (repo in repositories) {
-                pushed += repo.pushPending()
+                val report = repo.pushPending()
+                // P1-T5a: per-repo push report. This is the line that ends the
+                // "0 pushed, no error" silent-catch — a run that leaves rows
+                // pending now says exactly why (failed+status / deferred+reason).
+                Log.i(TAG, report.line())
+                pushed += report.succeeded
                 pulled += repo.pullSince()
             }
             if (pushed + pulled > 0) {

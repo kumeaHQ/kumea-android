@@ -25,7 +25,10 @@ class SyncWorkerOrderTest {
         private val pushCount: Int = 0,
         private val pullCount: Int = 0,
     ) : SyncableRepository {
-        override suspend fun pushPending(): Int { records.add(CallRecord(name, "push")); return pushCount }
+        override suspend fun pushPending(): PushReport {
+            records.add(CallRecord(name, "push"))
+            return PushReport(repo = name, found = pushCount, attempted = pushCount, succeeded = pushCount)
+        }
         override suspend fun pullSince(): Int {
             if (failOnPull) throw IllegalStateException("$name: FK guard missing")
             records.add(CallRecord(name, "pull"))
@@ -109,6 +112,46 @@ class SyncWorkerOrderTest {
         assertEquals(8, records.size)
     }
 
+    // ── P1-T5: Order trails the FK order (agent → farm → field → note → order) ──
+    // Order.farmerId reads from Farm and Order.agentCode resolves to an Agent, so
+    // BOTH parents must reach the server before the order. RepositoryModule binds
+    // order last for exactly this reason — but correctness is the per-repo FK
+    // guard (defer + retry), not this Set order.
+
+    /** Declared order: agent → farm → … → order, with order pushing last. */
+    @Test
+    fun `order pushes after agent and farm in the declared FK order`() = runBlocking {
+        val records = mutableListOf<CallRecord>()
+        val repos = linkedSetOf(
+            TrackingRepo("agent", records),
+            TrackingRepo("farm", records),
+            TrackingRepo("field", records),
+            TrackingRepo("note", records),
+            TrackingRepo("order", records),
+        )
+        for (repo in repos) { repo.pushPending(); repo.pullSince() }
+        val pushes = records.filter { it.phase == "push" }.map { it.repo }
+        assertEquals(listOf("agent", "farm", "field", "note", "order"), pushes)
+        // The order's FK parents (agent, farm) both pushed before it.
+        assertTrue(pushes.indexOf("agent") < pushes.indexOf("order"))
+        assertTrue(pushes.indexOf("farm") < pushes.indexOf("order"))
+    }
+
+    /** Reverse-registered including order — per-repo guards still complete the cycle. */
+    @Test
+    fun `reverse order including order still completes via guards`() = runBlocking {
+        val records = mutableListOf<CallRecord>()
+        val repos = linkedSetOf(
+            TrackingRepo("order", records),
+            TrackingRepo("note", records),
+            TrackingRepo("field", records),
+            TrackingRepo("farm", records),
+            TrackingRepo("agent", records),
+        )
+        for (repo in repos) { repo.pushPending(); repo.pullSince() }
+        assertEquals(10, records.size)
+    }
+
     // ── Ticket 2.3: row counts aggregate across the multibound set ───────────
     // SyncWorker sums these to decide whether a background sync moved any data
     // (and so whether to show a "synced" notification).
@@ -124,7 +167,7 @@ class SyncWorkerOrderTest {
         )
         var pushed = 0
         var pulled = 0
-        for (repo in repos) { pushed += repo.pushPending(); pulled += repo.pullSince() }
+        for (repo in repos) { pushed += repo.pushPending().succeeded; pulled += repo.pullSince() }
         assertEquals(4, pushed)
         assertEquals(6, pulled)
         assertTrue("Data moved → worker would notify", pushed + pulled > 0)
@@ -140,7 +183,7 @@ class SyncWorkerOrderTest {
             TrackingRepo("note", records),
         )
         var moved = 0
-        for (repo in repos) { moved += repo.pushPending(); moved += repo.pullSince() }
+        for (repo in repos) { moved += repo.pushPending().succeeded; moved += repo.pullSince() }
         assertEquals("Nothing pending, nothing pulled → silent", 0, moved)
     }
 }

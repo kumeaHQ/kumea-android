@@ -17,12 +17,14 @@ import org.junit.Test
 import retrofit2.Response
 
 /**
- * Agent offline-sync tests (Phase 1a · T5-slice), mockk-free with hand fakes —
- * the project has no mocking library on the test classpath. Mirrors FarmSyncTest
- * and adds the two Agent-specific guarantees:
- *   • an offline onboard lands as a pending CREATE,
- *   • the CREATE push adopts the server-generated agentCode (the device sends a
- *     blank code; the server returns the canonical VA-NANDI-001 form),
+ * Agent offline-sync tests (Phase 1a · T5-slice → P1-T5), mockk-free with hand
+ * fakes — the project has no mocking library on the test classpath. Mirrors
+ * FarmSyncTest and adds the Agent-specific guarantees:
+ *   • an offline onboard lands as a pending CREATE with a client-minted
+ *     <PREFIX>-<REGION>-<NNN> code (P1-T5 — so a sale in the same airplane-mode
+ *     session can attribute to it),
+ *   • the NNN sequence advances per (role, region) across onboards,
+ *   • the CREATE push SENDS that minted code and the server adopts it verbatim,
  *   • the push-before-pull invariant: a still-pending row is not clobbered by a
  *     concurrent server pull.
  */
@@ -35,6 +37,12 @@ class AgentSyncTest {
         override fun getActiveByRole(role: String): Flow<List<AgentEntity>> =
             flowOf(rows.values.filter { it.role == role })
         override suspend fun getAllIds(): List<String> = rows.keys.toList()
+        override suspend fun getCodesWithPrefix(prefix: String): List<String> =
+            rows.values.map { it.agentCode }.filter { it.startsWith(prefix) }
+        override suspend fun findByLinkedUserId(userId: String): AgentEntity? =
+            rows.values.firstOrNull { it.linkedUserId == userId && it.deletedAt == null }
+        override suspend fun getActiveById(id: String): AgentEntity? =
+            rows[id]?.takeIf { it.deletedAt == null }
         override suspend fun getPendingSync(): List<AgentEntity> = pending
         override suspend fun getLatestUpdatedAt(): String? = rows.values.maxOfOrNull { it.updatedAt }
         override suspend fun upsertAll(agents: List<AgentEntity>) {
@@ -69,7 +77,7 @@ class AgentSyncTest {
     )
 
     @Test
-    fun `offline onboard marks the row pending CREATE`() = runBlocking {
+    fun `offline onboard marks the row pending CREATE with a minted code`() = runBlocking {
         val dao = FakeAgentDao()
         val repo = AgentRepository(dao, NoOpConflictDao(), FakeKumeaApi())
 
@@ -79,30 +87,47 @@ class AgentSyncTest {
         assertTrue(captured.pendingSync)
         assertEquals(SyncAction.CREATE, captured.syncAction)
         assertEquals("officer-1", captured.endorsedById)
-        // The device sends a blank code; the server owns code generation.
-        assertEquals("", captured.agentCode)
+        // P1-T5: the device mints a provisional <PREFIX>-<REGION>-<NNN> code so a
+        // sale in the same offline session can attribute to this agent.
+        assertEquals("VA-NANDI-001", captured.agentCode)
     }
 
     @Test
-    fun `CREATE push adopts the server-generated agentCode`() = runBlocking {
+    fun `minted NNN advances per role and region`() = runBlocking {
         val dao = FakeAgentDao()
-        var sentBlankCode = false
+        val repo = AgentRepository(dao, NoOpConflictDao(), FakeKumeaApi())
+
+        val first = repo.createLocal(role = "village_agent", region = "Nandi")
+        val second = repo.createLocal(role = "village_agent", region = "Nandi")
+        // A different role shares the region but not the prefix → its own sequence.
+        val officer = repo.createLocal(role = "extension_officer", region = "Nandi")
+
+        assertEquals("VA-NANDI-001", dao.rows.getValue(first).agentCode)
+        assertEquals("VA-NANDI-002", dao.rows.getValue(second).agentCode)
+        assertEquals("EO-NANDI-001", dao.rows.getValue(officer).agentCode)
+    }
+
+    @Test
+    fun `CREATE push sends the client-minted code and the server adopts it`() = runBlocking {
+        val dao = FakeAgentDao()
+        var sentCode: String? = null
         val api = object : FakeKumeaApi() {
             override suspend fun createAgent(agent: AgentCreateRequest): Response<AgentResponse> {
-                // The wire request carries no commission field by construction,
-                // and no agentCode — the server generates it.
-                sentBlankCode = true
-                return Response.success(serverAgent(agent.id, "VA-NANDI-001", "2026-06-09T10:00:00Z"))
+                // The wire request carries the client-minted code (and no
+                // commission field by construction); the server adopts it verbatim.
+                sentCode = agent.agentCode
+                return Response.success(serverAgent(agent.id, agent.agentCode!!, "2026-06-09T10:00:00Z"))
             }
         }
         val repo = AgentRepository(dao, NoOpConflictDao(), api)
         val id = repo.createLocal(role = "village_agent", region = "Nandi")
         dao.pending = listOf(dao.rows.getValue(id))
 
-        val pushed = repo.pushPending()
+        val report = repo.pushPending()
 
-        assertEquals(1, pushed)
-        assertTrue(sentBlankCode)
+        assertEquals(1, report.succeeded)
+        assertEquals("Agents", report.repo)
+        assertEquals("VA-NANDI-001", sentCode)
         val synced = dao.rows.getValue(id)
         assertEquals("VA-NANDI-001", synced.agentCode)
         assertFalse(synced.pendingSync)

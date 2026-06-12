@@ -14,6 +14,8 @@ import java.util.UUID
 import javax.inject.Inject
 import javax.inject.Singleton
 import kotlinx.datetime.Clock
+import co.ke.kumea.data.sync.PushReport
+import co.ke.kumea.data.sync.PushReportBuilder
 import co.ke.kumea.data.sync.SyncableRepository
 
 /**
@@ -106,67 +108,65 @@ class FieldRepository @Inject constructor(
      * Push all pending local changes to the server.
      * Called by the sync trigger (manual refresh today; SyncWorker later).
      */
-    override suspend fun pushPending(): Int {
+    override suspend fun pushPending(): PushReport {
         val pending = fieldDao.getPendingSync()
-        var pushed = 0
+        val report = PushReportBuilder("Fields")
+        report.found = pending.size
         for (field in pending) {
-            try {
-                when (field.syncAction) {
-                    SyncAction.CREATE -> {
-                        val response = api.createField(FieldCreateRequest(
-                            id = field.id,
-                            farmId = field.farmId,
-                            name = field.name,
-                            acres = field.acres,
-                            cropType = field.cropType,
-                        ))
-                        if (response.isSuccessful) {
-                            val serverField = response.body()!!
-                            fieldDao.markSynced(field.id, serverField.updatedAt)
-                            pushed++
-                        } else if (response.code() == 409) {
-                            // Conflict — server wins, log and discard local
-                            val serverBody = response.errorBody()?.string() ?: "{}"
-                            recordConflict(field, serverBody, "create_409")
-                            fieldDao.upsert(field.copy(pendingSync = false))
-                        }
-                    }
-                    SyncAction.UPDATE -> {
-                        val response = api.updateField(field.id, FieldUpdateRequest(
-                            name = field.name,
-                            acres = field.acres,
-                            cropType = field.cropType,
-                            updatedAt = field.updatedAt,
-                        ))
-                        if (response.isSuccessful) {
-                            val serverField = response.body()!!
-                            fieldDao.markSynced(field.id, serverField.updatedAt)
-                            pushed++
-                        } else if (response.code() == 409) {
-                            val serverBody = response.errorBody()?.string() ?: "{}"
-                            recordConflict(field, serverBody, "update_409")
-                            fieldDao.upsert(field.copy(pendingSync = false))
-                        }
-                    }
-                    SyncAction.DELETE -> {
-                        val response = api.deleteField(field.id)
-                        if (response.isSuccessful) {
-                            // DELETE returns 204 — no body, just mark synced
-                            val now = Clock.System.now().toString()
-                            fieldDao.markSyncedDelete(field.id, field.deletedAt ?: now)
-                            pushed++
-                        }
-                        // DELETE never returns 409 per Ticket 1.3; if we somehow get one,
-                        // leave it pending and let the next pull reconcile.
+            when (field.syncAction) {
+                SyncAction.CREATE -> {
+                    val response = api.createField(FieldCreateRequest(
+                        id = field.id,
+                        farmId = field.farmId,
+                        name = field.name,
+                        acres = field.acres,
+                        cropType = field.cropType,
+                    ))
+                    if (response.isSuccessful) {
+                        fieldDao.markSynced(field.id, response.body()!!.updatedAt)
+                        report.succeeded()
+                    } else if (response.code() == 409) {
+                        // Conflict — server wins, record and discard local.
+                        recordConflict(field, response.errorBody()?.string() ?: "{}", "create_409")
+                        fieldDao.upsert(field.copy(pendingSync = false))
+                        report.failed("409")
+                    } else {
+                        // Left pending; surfaced with its status (no silent skip).
+                        report.failed(response.code().toString())
                     }
                 }
-            } catch (e: Exception) {
-                // Network error — re-throw so WorkManager (or the refresh caller)
-                // can retry with exponential backoff.
-                throw e
+                SyncAction.UPDATE -> {
+                    val response = api.updateField(field.id, FieldUpdateRequest(
+                        name = field.name,
+                        acres = field.acres,
+                        cropType = field.cropType,
+                        updatedAt = field.updatedAt,
+                    ))
+                    if (response.isSuccessful) {
+                        fieldDao.markSynced(field.id, response.body()!!.updatedAt)
+                        report.succeeded()
+                    } else if (response.code() == 409) {
+                        recordConflict(field, response.errorBody()?.string() ?: "{}", "update_409")
+                        fieldDao.upsert(field.copy(pendingSync = false))
+                        report.failed("409")
+                    } else {
+                        report.failed(response.code().toString())
+                    }
+                }
+                SyncAction.DELETE -> {
+                    val response = api.deleteField(field.id)
+                    if (response.isSuccessful) {
+                        // DELETE returns 204 — no body, just mark synced.
+                        val now = Clock.System.now().toString()
+                        fieldDao.markSyncedDelete(field.id, field.deletedAt ?: now)
+                        report.succeeded()
+                    } else {
+                        report.failed(response.code().toString())
+                    }
+                }
             }
         }
-        return pushed
+        return report.build()
     }
 
     /**

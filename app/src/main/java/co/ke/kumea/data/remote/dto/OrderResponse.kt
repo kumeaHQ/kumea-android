@@ -11,6 +11,9 @@ import kotlinx.serialization.Serializable
 data class OrderResponse(
     val id: String,
     val farmerId: String,
+    // P1-T8: the authoritative attribution (stable Agent UUID). agentCode is the
+    // server-derived display denorm that follows it.
+    val agentId: String? = null,
     val agentCode: String? = null,
     val dealerId: String? = null,
     val sku: String,

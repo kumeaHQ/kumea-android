@@ -8,7 +8,10 @@ import co.ke.kumea.data.local.SyncConflictEntity
 import co.ke.kumea.data.remote.KumeaApi
 import co.ke.kumea.data.remote.dto.AgentCreateRequest
 import co.ke.kumea.data.remote.dto.AgentUpdateRequest
+import co.ke.kumea.data.sync.PushReport
+import co.ke.kumea.data.sync.PushReportBuilder
 import co.ke.kumea.data.sync.SyncableRepository
+import co.ke.kumea.util.AgentCode
 import kotlinx.coroutines.flow.Flow
 import kotlinx.datetime.Clock
 import java.util.UUID
@@ -46,6 +49,37 @@ class AgentRepository @Inject constructor(
     fun getActiveByRole(role: String): Flow<List<AgentEntity>> = agentDao.getActiveByRole(role)
 
     /**
+     * The active agent linked to [userId], if any (P1-T7 persona resolution).
+     * Reads the local Room cache only — offline-safe; the caller refreshes the
+     * roster first when online. Null means "this user is not an agent" (a farmer).
+     */
+    suspend fun findMyAgent(userId: String): AgentEntity? =
+        agentDao.findByLinkedUserId(userId)
+
+    /**
+     * Endorse an agent (P1-T7) — set endorsedById and queue an offline-first
+     * UPDATE for sync. Unlike [updateLocal] (which only edits a still-pending,
+     * locally-created agent), this reads the FULL active table so an officer can
+     * endorse a village_agent that was pulled from the server. No-ops if the
+     * target isn't present locally. The server enforces that [endorsedById] must
+     * reference an extension_officer (assertEndorserIsOfficer) — the device never
+     * re-implements that rule.
+     */
+    suspend fun endorse(agentId: String, endorsedById: String) {
+        val agent = agentDao.getActiveById(agentId) ?: return
+        if (agent.endorsedById == endorsedById) return
+        val now = Clock.System.now().toString()
+        agentDao.upsert(
+            agent.copy(
+                endorsedById = endorsedById,
+                updatedAt = now,
+                pendingSync = true,
+                syncAction = SyncAction.UPDATE,
+            ),
+        )
+    }
+
+    /**
      * Onboard an agent locally (offline-first). Returns the generated UUID.
      *
      * endorsedById, when set, must be an officer — but that rule is enforced
@@ -62,12 +96,17 @@ class AgentRepository @Inject constructor(
     ): String {
         val now = Clock.System.now().toString()
         val id = UUID.randomUUID().toString()
+        // P1-T5: mint a provisional <PREFIX>-<REGION>-<NNN> code on device so a
+        // sale recorded in the same airplane-mode session can attribute to this
+        // agent. NNN continues the local sequence for (role, region); the server
+        // adopts this exact code on the CREATE push. Provisional-until-sync: see
+        // AgentCode for the multi-device collision caveat (zero risk on one device).
+        val existingCodes = agentDao.getCodesWithPrefix(AgentCode.codePrefix(role, region))
+        val agentCode = AgentCode.format(role, region, AgentCode.nextSeq(role, region, existingCodes))
         val agent = AgentEntity(
             id = id,
             role = role,
-            // The server generates the real agentCode (T2); a blank placeholder
-            // holds the column until the CREATE push returns the canonical row.
-            agentCode = "",
+            agentCode = agentCode,
             region = region,
             ward = ward,
             linkedContactId = linkedContactId,
@@ -119,84 +158,92 @@ class AgentRepository @Inject constructor(
         agentDao.upsert(agent)
     }
 
-    /** Push all pending local changes to the server. */
-    override suspend fun pushPending(): Int {
+    /**
+     * Push all pending local changes to the server. Agent is a root entity (no
+     * upstream FK), so there is no deferral here — every non-2xx is surfaced in
+     * the PushReport (409 = server-wins + cleared; anything else left pending and
+     * reported with its status). A network failure propagates so the worker
+     * retries (CancellationException included — never swallowed, 2.0 rule).
+     */
+    override suspend fun pushPending(): PushReport {
         val pending = agentDao.getPendingSync()
-        var pushed = 0
+        val report = PushReportBuilder("Agents")
+        report.found = pending.size
         for (agent in pending) {
-            try {
-                when (agent.syncAction) {
-                    SyncAction.CREATE -> {
-                        val response = api.createAgent(
-                            AgentCreateRequest(
-                                id = agent.id,
-                                role = agent.role,
-                                region = agent.region,
-                                ward = agent.ward,
-                                linkedContactId = agent.linkedContactId,
-                                linkedUserId = agent.linkedUserId,
-                                endorsedById = agent.endorsedById,
+            when (agent.syncAction) {
+                SyncAction.CREATE -> {
+                    val response = api.createAgent(
+                        AgentCreateRequest(
+                            id = agent.id,
+                            role = agent.role,
+                            region = agent.region,
+                            ward = agent.ward,
+                            linkedContactId = agent.linkedContactId,
+                            linkedUserId = agent.linkedUserId,
+                            endorsedById = agent.endorsedById,
+                            // P1-T5: send the client-minted code; the server
+                            // adopts it verbatim, so it round-trips unchanged.
+                            agentCode = agent.agentCode,
+                        ),
+                    )
+                    if (response.isSuccessful) {
+                        // Adopt the server row — it echoes back the same code.
+                        val server = response.body()!!
+                        agentDao.upsert(
+                            agent.copy(
+                                agentCode = server.agentCode,
+                                status = server.status,
+                                updatedAt = server.updatedAt,
+                                pendingSync = false,
+                                syncAction = SyncAction.UPDATE,
                             ),
                         )
-                        if (response.isSuccessful) {
-                            // Adopt the server row — it carries the generated agentCode.
-                            val server = response.body()!!
-                            agentDao.upsert(
-                                agent.copy(
-                                    agentCode = server.agentCode,
-                                    status = server.status,
-                                    updatedAt = server.updatedAt,
-                                    pendingSync = false,
-                                    syncAction = SyncAction.UPDATE,
-                                ),
-                            )
-                            pushed++
-                        } else if (response.code() == 409) {
-                            val serverBody = response.errorBody()?.string() ?: "{}"
-                            recordConflict(agent, serverBody, "create_409")
-                            agentDao.upsert(agent.copy(pendingSync = false))
-                        }
-                    }
-                    SyncAction.UPDATE -> {
-                        val response = api.updateAgent(
-                            agent.id,
-                            AgentUpdateRequest(
-                                region = agent.region,
-                                ward = agent.ward,
-                                linkedUserId = agent.linkedUserId,
-                                endorsedById = agent.endorsedById,
-                                status = agent.status,
-                                updatedAt = agent.updatedAt,
-                            ),
-                        )
-                        if (response.isSuccessful) {
-                            val server = response.body()!!
-                            agentDao.markSynced(agent.id, server.updatedAt)
-                            pushed++
-                        } else if (response.code() == 409) {
-                            val serverBody = response.errorBody()?.string() ?: "{}"
-                            recordConflict(agent, serverBody, "update_409")
-                            agentDao.upsert(agent.copy(pendingSync = false))
-                        }
-                    }
-                    SyncAction.DELETE -> {
-                        val response = api.deleteAgent(agent.id)
-                        if (response.isSuccessful) {
-                            val now = Clock.System.now().toString()
-                            agentDao.markSyncedDelete(agent.id, agent.deletedAt ?: now)
-                            pushed++
-                        }
-                        // DELETE never returns 409 (Ticket 1.3); leave pending and
-                        // let the next pull reconcile if something unexpected happens.
+                        report.succeeded()
+                    } else if (response.code() == 409) {
+                        recordConflict(agent, response.errorBody()?.string() ?: "{}", "create_409")
+                        agentDao.upsert(agent.copy(pendingSync = false))
+                        report.failed("409")
+                    } else {
+                        // Left pending; surfaced loudly (e.g. 401 = refresh failed, 5xx).
+                        report.failed(response.code().toString())
                     }
                 }
-            } catch (e: Exception) {
-                // Network error — re-throw so WorkManager / the refresh caller
-                // retries with backoff. Never swallowed (2.0 rule).
-                throw e
+                SyncAction.UPDATE -> {
+                    val response = api.updateAgent(
+                        agent.id,
+                        AgentUpdateRequest(
+                            region = agent.region,
+                            ward = agent.ward,
+                            linkedUserId = agent.linkedUserId,
+                            endorsedById = agent.endorsedById,
+                            status = agent.status,
+                            updatedAt = agent.updatedAt,
+                        ),
+                    )
+                    if (response.isSuccessful) {
+                        agentDao.markSynced(agent.id, response.body()!!.updatedAt)
+                        report.succeeded()
+                    } else if (response.code() == 409) {
+                        recordConflict(agent, response.errorBody()?.string() ?: "{}", "update_409")
+                        agentDao.upsert(agent.copy(pendingSync = false))
+                        report.failed("409")
+                    } else {
+                        report.failed(response.code().toString())
+                    }
+                }
+                SyncAction.DELETE -> {
+                    val response = api.deleteAgent(agent.id)
+                    if (response.isSuccessful) {
+                        val now = Clock.System.now().toString()
+                        agentDao.markSyncedDelete(agent.id, agent.deletedAt ?: now)
+                        report.succeeded()
+                    } else {
+                        report.failed(response.code().toString())
+                    }
+                }
             }
         }
-        return pushed
+        return report.build()
     }
 
     /**

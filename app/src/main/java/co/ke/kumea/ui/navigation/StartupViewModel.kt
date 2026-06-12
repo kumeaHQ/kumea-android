@@ -17,7 +17,7 @@ sealed interface StartupState {
 
 /**
  * Decides the nav start destination on cold start:
- *  - valid saved session (GET /auth/me 200) -> FarmList
+ *  - valid saved session (GET /auth/me 200) -> Landing (resolves persona, P1-T7)
  *  - no/invalid token                        -> PhoneEntry (token cleared)
  */
 @HiltViewModel
@@ -31,7 +31,7 @@ class StartupViewModel @Inject constructor(
     init {
         viewModelScope.launch {
             val destination = if (authRepository.isAuthenticated()) {
-                Routes.FARM_LIST
+                Routes.LANDING
             } else {
                 Routes.PHONE_ENTRY
             }

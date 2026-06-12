@@ -4,6 +4,7 @@ import co.ke.kumea.data.remote.dto.AgentCreateRequest
 import co.ke.kumea.data.remote.dto.AgentResponse
 import co.ke.kumea.data.remote.dto.AgentUpdateRequest
 import co.ke.kumea.data.remote.dto.AuthResponse
+import co.ke.kumea.data.remote.dto.EarningsResponse
 import co.ke.kumea.data.remote.dto.FarmCreateRequest
 import co.ke.kumea.data.remote.dto.FarmResponse
 import co.ke.kumea.data.remote.dto.FarmUpdateRequest
@@ -191,4 +192,16 @@ interface KumeaApi {
 
     @GET("fields/{fieldId}/ledger")
     suspend fun getFieldLedger(@Path("fieldId") fieldId: String): FieldLedgerResponse
+
+    // ---- Commission earnings (P1-T6 / T7) ----
+    // The read-only earnings surface. INERT in Phase 1 (rates unset → accrued
+    // zero, sachets counted). Returned as Response<> so the 200-with-null-body
+    // case (a plain farmer or an extension_officer — no earnings construct) can be
+    // read as body() == null rather than crashing deserialization. period is
+    // "YYYY-MM"; omit it for the current month. The village_agent surface is the
+    // only caller — an officer never reaches it (structurally unreachable, T7).
+    @GET("commission/me")
+    suspend fun getMyEarnings(
+        @Query("period") period: String? = null,
+    ): Response<EarningsResponse>
 }

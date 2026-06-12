@@ -25,6 +25,31 @@ interface AgentDao {
     @Query("SELECT id FROM agents WHERE deletedAt IS NULL AND syncAction != 'DELETE'")
     suspend fun getAllIds(): List<String>
 
+    /**
+     * The active agent linked to a given user (P1-T7 persona resolution). The
+     * server links an Agent to a User via linkedUserId (T4); a plain farmer has
+     * no such row → null. Returns the first active match (linkedUserId is unique
+     * per user in practice; the server's getMyEarnings uses the same findFirst).
+     */
+    @Query(
+        "SELECT * FROM agents WHERE linkedUserId = :userId AND deletedAt IS NULL " +
+            "AND syncAction != 'DELETE' ORDER BY updatedAt DESC LIMIT 1",
+    )
+    suspend fun findByLinkedUserId(userId: String): AgentEntity?
+
+    /** A single active agent by id — the read side of endorsing a synced agent. */
+    @Query("SELECT * FROM agents WHERE id = :id AND deletedAt IS NULL AND syncAction != 'DELETE'")
+    suspend fun getActiveById(id: String): AgentEntity?
+
+    /**
+     * Agent codes already allocated on this device that share a (role, region)
+     * prefix — the input to client-side NNN allocation (P1-T5). Includes pending
+     * and soft-deleted rows on purpose: a code, once minted, is never reused so
+     * the sequence stays monotonic. `prefix` is e.g. "VA-NANDI-".
+     */
+    @Query("SELECT agentCode FROM agents WHERE agentCode LIKE :prefix || '%'")
+    suspend fun getCodesWithPrefix(prefix: String): List<String>
+
     @Query("SELECT * FROM agents WHERE pendingSync = 1 ORDER BY updatedAt ASC")
     suspend fun getPendingSync(): List<AgentEntity>
 

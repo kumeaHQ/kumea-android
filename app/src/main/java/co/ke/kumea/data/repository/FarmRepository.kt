@@ -6,6 +6,7 @@ import co.ke.kumea.data.local.SyncAction
 import co.ke.kumea.data.local.SyncConflictDao
 import co.ke.kumea.data.local.SyncConflictEntity
 import co.ke.kumea.data.remote.KumeaApi
+import co.ke.kumea.data.remote.parseErrorCode
 import co.ke.kumea.data.remote.dto.FarmCreateRequest
 import co.ke.kumea.data.remote.dto.FarmUpdateRequest
 import kotlinx.coroutines.flow.Flow
@@ -13,6 +14,8 @@ import java.util.UUID
 import javax.inject.Inject
 import javax.inject.Singleton
 import kotlinx.datetime.Clock
+import co.ke.kumea.data.sync.PushReport
+import co.ke.kumea.data.sync.PushReportBuilder
 import co.ke.kumea.data.sync.SyncableRepository
 
 /**
@@ -102,71 +105,82 @@ class FarmRepository @Inject constructor(
      * Push all pending local changes to the server.
      * Called by SyncWorker.
      */
-    override suspend fun pushPending(): Int {
+    override suspend fun pushPending(): PushReport {
         val pending = farmDao.getPendingSync()
-        var pushed = 0
+        val report = PushReportBuilder("Farms")
+        report.found = pending.size
         for (farm in pending) {
-            try {
-                when (farm.syncAction) {
-                    SyncAction.CREATE -> {
-                        val response = api.createFarm(FarmCreateRequest(
-                            id = farm.id,
-                            name = farm.name,
-                            locationLat = farm.locationLat,
-                            locationLng = farm.locationLng,
-                            waterSource = farm.waterSource,
-                            referrerAgentId = farm.referrerAgentId,
-                        ))
-                        if (response.isSuccessful) {
-                            val serverFarm = response.body()!!
-                            farmDao.markSynced(farm.id, serverFarm.updatedAt)
-                            pushed++
-                        } else if (response.code() == 409) {
-                            // Conflict — server wins, log and discard local
-                            val serverBody = response.errorBody()?.string() ?: "{}"
-                            recordConflict(farm, serverBody, "create_409")
-                            // If we got the server version in the response body, replace local
-                            // Otherwise we could fetch; for Sprint 0 we just clear pendingSync
-                            farmDao.upsert(farm.copy(pendingSync = false))
+            when (farm.syncAction) {
+                SyncAction.CREATE -> {
+                    val response = api.createFarm(FarmCreateRequest(
+                        id = farm.id,
+                        name = farm.name,
+                        locationLat = farm.locationLat,
+                        locationLng = farm.locationLng,
+                        waterSource = farm.waterSource,
+                        referrerAgentId = farm.referrerAgentId,
+                    ))
+                    if (response.isSuccessful) {
+                        farmDao.markSynced(farm.id, response.body()!!.updatedAt)
+                        report.succeeded()
+                    } else {
+                        // errorBody().string() consumes the buffer — read it once.
+                        val serverBody = response.errorBody()?.string()
+                        when {
+                            response.code() == 400 &&
+                                parseErrorCode(serverBody) == "referrer_agent_not_found" -> {
+                                // FK-GUARD / DEFER: the referrer Agent hasn't synced
+                                // yet (FK ordering: Agent before Farm). Leave
+                                // pendingSync=true; the next cycle retries once the
+                                // agent lands. Recorded as a deferral, not a failure.
+                                report.deferred("referrer agent not synced yet")
+                            }
+                            response.code() == 409 -> {
+                                // Conflict — server wins, record and discard local.
+                                recordConflict(farm, serverBody ?: "{}", "create_409")
+                                farmDao.upsert(farm.copy(pendingSync = false))
+                                report.failed("409")
+                            }
+                            else -> {
+                                // Left pending; surfaced with its status (no silent skip).
+                                report.failed(response.code().toString())
+                            }
                         }
-                    }
-                    SyncAction.UPDATE -> {
-                        val response = api.updateFarm(farm.id, FarmUpdateRequest(
-                            name = farm.name,
-                            locationLat = farm.locationLat,
-                            locationLng = farm.locationLng,
-                            waterSource = farm.waterSource,
-                            updatedAt = farm.updatedAt,
-                        ))
-                        if (response.isSuccessful) {
-                            val serverFarm = response.body()!!
-                            farmDao.markSynced(farm.id, serverFarm.updatedAt)
-                            pushed++
-                        } else if (response.code() == 409) {
-                            val serverBody = response.errorBody()?.string() ?: "{}"
-                            recordConflict(farm, serverBody, "update_409")
-                            farmDao.upsert(farm.copy(pendingSync = false))
-                        }
-                    }
-                    SyncAction.DELETE -> {
-                        val response = api.deleteFarm(farm.id)
-                        if (response.isSuccessful) {
-                            // DELETE returns 204 — no body, just mark synced
-                            val now = Clock.System.now().toString()
-                            farmDao.markSyncedDelete(farm.id, farm.deletedAt ?: now)
-                            pushed++
-                        }
-                        // DELETE never returns 409 per Ticket 1.3; if we somehow get one,
-                        // just clear pendingSync and let the row reconcile on next pull
                     }
                 }
-            } catch (e: Exception) {
-                // Network error — WorkManager will retry with exponential backoff
-                // Re-throw so WorkManager marks the worker as retryable
-                throw e
+                SyncAction.UPDATE -> {
+                    val response = api.updateFarm(farm.id, FarmUpdateRequest(
+                        name = farm.name,
+                        locationLat = farm.locationLat,
+                        locationLng = farm.locationLng,
+                        waterSource = farm.waterSource,
+                        updatedAt = farm.updatedAt,
+                    ))
+                    if (response.isSuccessful) {
+                        farmDao.markSynced(farm.id, response.body()!!.updatedAt)
+                        report.succeeded()
+                    } else if (response.code() == 409) {
+                        recordConflict(farm, response.errorBody()?.string() ?: "{}", "update_409")
+                        farmDao.upsert(farm.copy(pendingSync = false))
+                        report.failed("409")
+                    } else {
+                        report.failed(response.code().toString())
+                    }
+                }
+                SyncAction.DELETE -> {
+                    val response = api.deleteFarm(farm.id)
+                    if (response.isSuccessful) {
+                        // DELETE returns 204 — no body, just mark synced.
+                        val now = Clock.System.now().toString()
+                        farmDao.markSyncedDelete(farm.id, farm.deletedAt ?: now)
+                        report.succeeded()
+                    } else {
+                        report.failed(response.code().toString())
+                    }
+                }
             }
         }
-        return pushed
+        return report.build()
     }
 
     /**

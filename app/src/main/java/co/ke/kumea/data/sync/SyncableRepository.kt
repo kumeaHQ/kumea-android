@@ -11,18 +11,18 @@ package co.ke.kumea.data.sync
  * Adding a fourth entity (Weather, Ticket 2.4) is a one-line
  * `: SyncableRepository` on its repository — no new worker file needed.
  *
- * Both methods return the number of rows they actually moved (Ticket 2.3). This
- * is additive instrumentation only — the sync semantics are unchanged — and lets
- * the SyncWorker decide whether a background sync moved any data (and so whether
- * to show a "synced" notification) without reaching past the abstraction into the
- * DAOs. A new syncable entity inherits this for free.
+ * pushPending returns a [PushReport] (P1-T5a) so the worker can log a per-repo
+ * found/attempted/succeeded/failed/deferred breakdown — never "0 pushed, no
+ * error" again. pullSince still returns a row count (the silent-catch bug was in
+ * the push path, and a non-2xx pull surfaces as a thrown HttpException already).
  */
 interface SyncableRepository {
     /**
      * Push local changes to server. Throws on network failure — caller retries.
-     * @return the number of pending rows successfully pushed (0 if none pending).
+     * Every non-2xx is classified into the [PushReport] (failed+status or
+     * deferred+reason); nothing is silently swallowed.
      */
-    suspend fun pushPending(): Int
+    suspend fun pushPending(): PushReport
 
     /**
      * Pull server changes since last local update. Throws on network failure.
