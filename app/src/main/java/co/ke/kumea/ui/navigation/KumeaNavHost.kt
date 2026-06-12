@@ -12,12 +12,15 @@ import co.ke.kumea.ui.screen.auth.OtpEntryScreen
 import co.ke.kumea.ui.screen.auth.PhoneEntryScreen
 import co.ke.kumea.ui.screen.auth.PinEntryScreen
 import co.ke.kumea.ui.screen.auth.PinSetupScreen
+import co.ke.kumea.ui.screen.agent.VillageAgentHomeScreen
 import co.ke.kumea.ui.screen.distribution.DistributionDemoScreen
 import co.ke.kumea.ui.screen.farm.FarmCreateScreen
 import co.ke.kumea.ui.screen.farm.FarmListScreen
+import co.ke.kumea.ui.screen.home.LandingScreen
 import co.ke.kumea.ui.screen.ledger.LedgerScreen
 import co.ke.kumea.ui.screen.note.NoteCreateScreen
 import co.ke.kumea.ui.screen.note.NoteListScreen
+import co.ke.kumea.ui.screen.officer.OfficerHomeScreen
 import co.ke.kumea.ui.screen.order.OrderCreateScreen
 
 object Routes {
@@ -25,7 +28,12 @@ object Routes {
     const val OTP_ENTRY = "otp_entry/{phone}"
     const val PIN_SETUP = "pin_setup/{registrationToken}"
     const val PIN_ENTRY = "pin_entry/{phone}"
+    // P1-T7: the persona gate. Login/startup lands here; it resolves the persona
+    // (from Agent.role) and replaces itself with the matching home below.
+    const val LANDING = "landing"
     const val FARM_LIST = "farms"
+    const val AGENT_HOME = "agent/home"
+    const val OFFICER_HOME = "officer/home"
     const val FARM_CREATE = "farms/create"
     const val DISTRIBUTION_DEMO = "distribution/demo"
     const val NOTE_LIST = "farms/{farmId}/notes"
@@ -73,8 +81,9 @@ fun KumeaNavHost(
         ) {
             PinSetupScreen(
                 onAuthSuccess = {
-                    navController.navigate(Routes.FARM_LIST) {
-                        // Clear the whole auth stack so back from FarmList exits the app.
+                    navController.navigate(Routes.LANDING) {
+                        // Clear the whole auth stack; LANDING resolves persona and
+                        // replaces itself with the correct home (P1-T7).
                         popUpTo(Routes.PHONE_ENTRY) { inclusive = true }
                     }
                 },
@@ -86,7 +95,7 @@ fun KumeaNavHost(
         ) {
             PinEntryScreen(
                 onAuthSuccess = {
-                    navController.navigate(Routes.FARM_LIST) {
+                    navController.navigate(Routes.LANDING) {
                         popUpTo(Routes.PHONE_ENTRY) { inclusive = true }
                     }
                 },
@@ -94,11 +103,43 @@ fun KumeaNavHost(
                 onUseOtp = { navController.popBackStack() },
             )
         }
+        composable(Routes.LANDING) {
+            // Replace LANDING in the back stack with the chosen home so Back from a
+            // home exits the app rather than returning to the resolver.
+            fun goHome(route: String) = navController.navigate(route) {
+                popUpTo(Routes.LANDING) { inclusive = true }
+            }
+            LandingScreen(
+                onFarmer = { goHome(Routes.FARM_LIST) },
+                onVillageAgent = { goHome(Routes.AGENT_HOME) },
+                onOfficer = { goHome(Routes.OFFICER_HOME) },
+            )
+        }
         composable(Routes.FARM_LIST) {
             FarmListScreen(
                 onAddFarm = { navController.navigate(Routes.FARM_CREATE) },
                 onOpenFarm = { farmId -> navController.navigate(Routes.noteList(farmId)) },
                 onOpenDistributionDemo = { navController.navigate(Routes.DISTRIBUTION_DEMO) },
+                onLoggedOut = {
+                    navController.navigate(Routes.PHONE_ENTRY) {
+                        popUpTo(0) { inclusive = true }
+                    }
+                },
+            )
+        }
+        composable(Routes.AGENT_HOME) {
+            VillageAgentHomeScreen(
+                onRecordSale = { navController.navigate(Routes.orderCreate(null)) },
+                onOpenDistributionDemo = { navController.navigate(Routes.DISTRIBUTION_DEMO) },
+                onLoggedOut = {
+                    navController.navigate(Routes.PHONE_ENTRY) {
+                        popUpTo(0) { inclusive = true }
+                    }
+                },
+            )
+        }
+        composable(Routes.OFFICER_HOME) {
+            OfficerHomeScreen(
                 onLoggedOut = {
                     navController.navigate(Routes.PHONE_ENTRY) {
                         popUpTo(0) { inclusive = true }

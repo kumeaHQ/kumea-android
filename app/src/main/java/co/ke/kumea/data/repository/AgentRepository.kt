@@ -49,6 +49,37 @@ class AgentRepository @Inject constructor(
     fun getActiveByRole(role: String): Flow<List<AgentEntity>> = agentDao.getActiveByRole(role)
 
     /**
+     * The active agent linked to [userId], if any (P1-T7 persona resolution).
+     * Reads the local Room cache only — offline-safe; the caller refreshes the
+     * roster first when online. Null means "this user is not an agent" (a farmer).
+     */
+    suspend fun findMyAgent(userId: String): AgentEntity? =
+        agentDao.findByLinkedUserId(userId)
+
+    /**
+     * Endorse an agent (P1-T7) — set endorsedById and queue an offline-first
+     * UPDATE for sync. Unlike [updateLocal] (which only edits a still-pending,
+     * locally-created agent), this reads the FULL active table so an officer can
+     * endorse a village_agent that was pulled from the server. No-ops if the
+     * target isn't present locally. The server enforces that [endorsedById] must
+     * reference an extension_officer (assertEndorserIsOfficer) — the device never
+     * re-implements that rule.
+     */
+    suspend fun endorse(agentId: String, endorsedById: String) {
+        val agent = agentDao.getActiveById(agentId) ?: return
+        if (agent.endorsedById == endorsedById) return
+        val now = Clock.System.now().toString()
+        agentDao.upsert(
+            agent.copy(
+                endorsedById = endorsedById,
+                updatedAt = now,
+                pendingSync = true,
+                syncAction = SyncAction.UPDATE,
+            ),
+        )
+    }
+
+    /**
      * Onboard an agent locally (offline-first). Returns the generated UUID.
      *
      * endorsedById, when set, must be an officer — but that rule is enforced

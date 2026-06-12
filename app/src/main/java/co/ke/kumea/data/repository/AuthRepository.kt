@@ -40,9 +40,22 @@ class AuthRepository @Inject constructor(
     /**
      * Current user profile (GET /auth/me). Throws on network/HTTP failure —
      * callers that treat it as best-effort (e.g. agent-code auto-populate)
-     * handle and log the failure themselves.
+     * handle and log the failure themselves. Caches the user id as a side effect
+     * so persona resolution (P1-T7) has it even after a process restart.
      */
-    suspend fun me(): UserProfile = api.me()
+    suspend fun me(): UserProfile {
+        val profile = api.me()
+        tokenStore.saveUserId(profile.id)
+        return profile
+    }
+
+    /**
+     * The signed-in user's id, from the local cache (no network). Persona
+     * resolution matches this against Agent.linkedUserId. Null only for a
+     * pre-P1-T7 session whose id was never cached; the resolver then falls back
+     * to [me] when online.
+     */
+    suspend fun currentUserId(): String? = tokenStore.userIdFlow.firstOrNull()
 
     suspend fun verifyOtp(phone: String, code: String): VerifyOtpResponse =
         api.verifyOtp(VerifyOtpRequest(phone, code))
@@ -50,12 +63,14 @@ class AuthRepository @Inject constructor(
     suspend fun register(registrationToken: String, pin: String): AuthResponse {
         val res = api.register(RegisterRequest(registrationToken, pin))
         tokenStore.saveTokens(res.accessToken, res.refreshToken)
+        tokenStore.saveUserId(res.user.id)
         return res
     }
 
     suspend fun login(phone: String, pin: String): AuthResponse {
         val res = api.login(LoginRequest(phone, pin))
         tokenStore.saveTokens(res.accessToken, res.refreshToken)
+        tokenStore.saveUserId(res.user.id)
         return res
     }
 

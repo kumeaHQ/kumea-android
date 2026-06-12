@@ -4,6 +4,7 @@ import co.ke.kumea.data.remote.dto.AgentCreateRequest
 import co.ke.kumea.data.remote.dto.AgentResponse
 import co.ke.kumea.data.remote.dto.AgentUpdateRequest
 import co.ke.kumea.data.remote.dto.AuthResponse
+import co.ke.kumea.data.remote.dto.EarningsResponse
 import co.ke.kumea.data.remote.dto.FarmCreateRequest
 import co.ke.kumea.data.remote.dto.FarmResponse
 import co.ke.kumea.data.remote.dto.FarmLedgerResponse
@@ -78,4 +79,6 @@ open class FakeKumeaApi : KumeaApi {
 
     override suspend fun getFarmLedger(farmId: String): FarmLedgerResponse = nope()
     override suspend fun getFieldLedger(fieldId: String): FieldLedgerResponse = nope()
+
+    override suspend fun getMyEarnings(period: String?): Response<EarningsResponse> = nope()
 }

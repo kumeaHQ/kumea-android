@@ -39,6 +39,10 @@ class AgentSyncTest {
         override suspend fun getAllIds(): List<String> = rows.keys.toList()
         override suspend fun getCodesWithPrefix(prefix: String): List<String> =
             rows.values.map { it.agentCode }.filter { it.startsWith(prefix) }
+        override suspend fun findByLinkedUserId(userId: String): AgentEntity? =
+            rows.values.firstOrNull { it.linkedUserId == userId && it.deletedAt == null }
+        override suspend fun getActiveById(id: String): AgentEntity? =
+            rows[id]?.takeIf { it.deletedAt == null }
         override suspend fun getPendingSync(): List<AgentEntity> = pending
         override suspend fun getLatestUpdatedAt(): String? = rows.values.maxOfOrNull { it.updatedAt }
         override suspend fun upsertAll(agents: List<AgentEntity>) {
