@@ -12,6 +12,8 @@ import co.ke.kumea.data.repository.AgentRepository
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.runBlocking
+import okhttp3.MediaType.Companion.toMediaType
+import okhttp3.ResponseBody.Companion.toResponseBody
 import org.junit.Assert.*
 import org.junit.Test
 import retrofit2.Response
@@ -158,5 +160,69 @@ class AgentSyncTest {
         // The pending local row is untouched — push gets its turn first.
         assertEquals("", dao.rows.getValue("a1").agentCode)
         assertTrue(dao.rows.getValue("a1").pendingSync)
+    }
+
+    // ── KWAP-01A: a 403 is terminal ──────────────────────────────────────────
+
+    private class RecordingConflictDao : SyncConflictDao {
+        val conflicts = mutableListOf<SyncConflictEntity>()
+        override suspend fun insert(conflict: SyncConflictEntity) { conflicts += conflict }
+    }
+
+    private fun forbidden(): Response<AgentResponse> = Response.error(
+        403,
+        """{"code":"admin_required","message":"provisioned by Kumea"}"""
+            .toResponseBody("application/json".toMediaType()),
+    )
+
+    @Test
+    fun `403 on CREATE abandons the row instead of retrying forever`() = runBlocking {
+        val dao = FakeAgentDao()
+        val conflicts = RecordingConflictDao()
+        var attempts = 0
+        val api = object : FakeKumeaApi() {
+            override suspend fun createAgent(agent: AgentCreateRequest): Response<AgentResponse> {
+                attempts++
+                return forbidden()
+            }
+        }
+        val repo = AgentRepository(dao, conflicts, api)
+        val id = repo.createLocal(role = "village_agent", region = "Nandi")
+        dao.pending = listOf(dao.rows.getValue(id))
+
+        val report = repo.pushPending()
+
+        assertEquals(1, report.failed)
+        assertEquals(listOf("403"), report.failures)
+        // The whole point: pendingSync is cleared, so this row never comes back.
+        assertFalse(dao.rows.getValue(id).pendingSync)
+        // ...and what was refused is recorded rather than silently dropped.
+        assertEquals(1, conflicts.conflicts.size)
+        assertEquals("create_403", conflicts.conflicts.first().conflictType)
+
+        // A second cycle re-reads pending rows; this one is no longer among them.
+        dao.pending = dao.rows.values.filter { it.pendingSync }
+        repo.pushPending()
+        assertEquals(1, attempts)
+    }
+
+    @Test
+    fun `401 stays retryable — only 403 is terminal`() = runBlocking {
+        val dao = FakeAgentDao()
+        val conflicts = RecordingConflictDao()
+        val api = object : FakeKumeaApi() {
+            override suspend fun createAgent(agent: AgentCreateRequest): Response<AgentResponse> =
+                Response.error(401, "".toResponseBody("application/json".toMediaType()))
+        }
+        val repo = AgentRepository(dao, conflicts, api)
+        val id = repo.createLocal(role = "village_agent", region = "Nandi")
+        dao.pending = listOf(dao.rows.getValue(id))
+
+        val report = repo.pushPending()
+
+        assertEquals(listOf("401"), report.failures)
+        // A refresh may still be in flight — the row must survive to try again.
+        assertTrue(dao.rows.getValue(id).pendingSync)
+        assertTrue(conflicts.conflicts.isEmpty())
     }
 }

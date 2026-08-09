@@ -75,20 +75,25 @@ fun DistributionDemoScreen(
                 singleLine = true,
             )
 
-            Button(
-                onClick = { viewModel.onboardOfficer(region) },
-                modifier = Modifier.fillMaxWidth(),
-            ) { Text("1 · Onboard officer (endorser)") }
-
-            Button(
-                onClick = { viewModel.onboardVillageAgent(region, endorser?.id) },
-                modifier = Modifier.fillMaxWidth(),
-            ) {
-                Text(
-                    if (endorser != null) "2 · Onboard village_agent (endorsed by ${endorser.agentCode.ifBlank { "officer ${endorser.id.take(6)}" }})"
-                    else "2 · Onboard village_agent (no officer yet)",
-                )
-            }
+            // KWAP-01A: the "onboard officer" / "onboard village_agent" buttons
+            // are GONE. Agent and officer accounts are provisioned by Kumea
+            // against signed paperwork; a debug screen that mints them on-device
+            // was the same self-provisioning path the server gate now refuses,
+            // sitting inside the shipped app. The server would 403 these pushes
+            // anyway — this removes the button rather than shipping one that
+            // silently fails.
+            //
+            // The demo still exercises the sale loop against agents pulled from
+            // the roster, which is how a real device gets them.
+            Text(
+                text = if (endorser != null) {
+                    "Endorser on device: ${endorser.agentCode.ifBlank { endorser.id.take(6) }}"
+                } else {
+                    "No officer on this device yet — agents arrive from the server roster."
+                },
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
 
             OutlinedTextField(
                 value = farmerName,

@@ -66,25 +66,17 @@ class DistributionDemoViewModel @Inject constructor(
         _log.value = "${_log.value}\n• $line"
     }
 
-    /** Onboard an extension_officer locally (so a VA can be endorsed offline). */
-    fun onboardOfficer(region: String) {
-        viewModelScope.launch {
-            val id = agentRepository.createLocal(role = "extension_officer", region = region)
-            append("Onboarded officer (pending) id=${id.take(8)} region=$region")
-        }
-    }
-
-    /** Onboard a village_agent, optionally endorsed by an officer already on device. */
-    fun onboardVillageAgent(region: String, endorsedById: String?) {
-        viewModelScope.launch {
-            val id = agentRepository.createLocal(
-                role = "village_agent",
-                region = region,
-                endorsedById = endorsedById,
-            )
-            append("Onboarded village_agent (pending) id=${id.take(8)} endorsedBy=${endorsedById?.take(8) ?: "none"}")
-        }
-    }
+    // KWAP-01A — onboardOfficer() and onboardVillageAgent() are REMOVED.
+    //
+    // Agent and officer accounts are provisioned by Kumea against a signed
+    // contract (commercial agent) or a county authorisation (extension officer).
+    // These two functions were an on-device path to mint either one, which is
+    // precisely what the server's admin gate on POST /agents now refuses — so
+    // they could only ever produce rows that 403 on push and get abandoned.
+    //
+    // Agents reach a device by being pulled from the roster, never by being
+    // created on it. Do not reinstate these as a "debug convenience": the demo
+    // screen ships in the same APK as everything else.
 
     /** Register a farmer (a Farm) attributed to a referrer agent. */
     fun registerFarmerWithReferrer(name: String, referrerAgentId: String?) {

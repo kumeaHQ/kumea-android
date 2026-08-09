@@ -203,6 +203,9 @@ class AgentRepository @Inject constructor(
                         recordConflict(agent, response.errorBody()?.string() ?: "{}", "create_409")
                         agentDao.upsert(agent.copy(pendingSync = false))
                         report.failed("409")
+                    } else if (response.code() == 403) {
+                        abandonForbidden(agent, response.errorBody()?.string(), "create_403")
+                        report.failed("403")
                     } else {
                         // Left pending; surfaced loudly (e.g. 401 = refresh failed, 5xx).
                         report.failed(response.code().toString())
@@ -227,6 +230,9 @@ class AgentRepository @Inject constructor(
                         recordConflict(agent, response.errorBody()?.string() ?: "{}", "update_409")
                         agentDao.upsert(agent.copy(pendingSync = false))
                         report.failed("409")
+                    } else if (response.code() == 403) {
+                        abandonForbidden(agent, response.errorBody()?.string(), "update_403")
+                        report.failed("403")
                     } else {
                         report.failed(response.code().toString())
                     }
@@ -237,6 +243,9 @@ class AgentRepository @Inject constructor(
                         val now = Clock.System.now().toString()
                         agentDao.markSyncedDelete(agent.id, agent.deletedAt ?: now)
                         report.succeeded()
+                    } else if (response.code() == 403) {
+                        abandonForbidden(agent, response.errorBody()?.string(), "delete_403")
+                        report.failed("403")
                     } else {
                         report.failed(response.code().toString())
                     }
@@ -290,6 +299,35 @@ class AgentRepository @Inject constructor(
             agentDao.upsertAll(cleanEntities)
         }
         return cleanEntities.size
+    }
+
+    /**
+     * A 403 is TERMINAL — clear pendingSync so the row stops being retried
+     * (KWAP-01A).
+     *
+     * Agent accounts are provisioned by Kumea, so a device push the server
+     * refuses on authorisation grounds will be refused identically forever.
+     * Leaving it pending means every future sync cycle re-sends a request that
+     * cannot succeed, and because `pushPending()` iterates ALL pending rows on
+     * every cycle, one permanently-rejected row is a permanent tax on the queue
+     * and permanent noise in the failure log.
+     *
+     * Deliberately narrow: 401 (token refresh in flight), timeouts and 5xx stay
+     * retryable. Only "you are not allowed to do this" is treated as final.
+     *
+     * The row is not deleted. The rejection is written to the sync-conflict
+     * audit exactly like a 409, so what the device tried to do — and was told it
+     * could not — survives for inspection instead of vanishing. The "403" also
+     * lands in the PushReport, which SyncWorker logs at error level; there is no
+     * silent path out of here.
+     */
+    private suspend fun abandonForbidden(
+        local: AgentEntity,
+        serverPayload: String?,
+        conflictType: String,
+    ) {
+        recordConflict(local, serverPayload ?: "{}", conflictType)
+        agentDao.upsert(local.copy(pendingSync = false))
     }
 
     private suspend fun recordConflict(local: AgentEntity, serverPayload: String, conflictType: String) {
