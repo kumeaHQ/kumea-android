@@ -36,11 +36,10 @@ fun DistributionDemoScreen(
     val log by viewModel.log.collectAsStateWithLifecycle()
     val busy by viewModel.busy.collectAsStateWithLifecycle()
 
-    var region by remember { mutableStateOf("Nandi") }
     var farmerName by remember { mutableStateOf("Demo Farmer") }
 
-    // The most-recently onboarded officer endorses the next village_agent; the
-    // most-recent agent overall is the farmer's referrer.
+    // Officers and agents now arrive from the server roster (KWAP-01A), so these
+    // read whatever this device pulled; the most-recent agent is the referrer.
     val endorser = officers.firstOrNull()
     val referrer = agents.firstOrNull()
     // A sale needs a registered farmer and a commission-eligible agent with a code.
@@ -67,14 +66,6 @@ fun DistributionDemoScreen(
                 .verticalScroll(rememberScrollState()),
             verticalArrangement = Arrangement.spacedBy(12.dp),
         ) {
-            OutlinedTextField(
-                value = region,
-                onValueChange = { region = it },
-                label = { Text("Region") },
-                modifier = Modifier.fillMaxWidth(),
-                singleLine = true,
-            )
-
             // KWAP-01A: the "onboard officer" / "onboard village_agent" buttons
             // are GONE. Agent and officer accounts are provisioned by Kumea
             // against signed paperwork; a debug screen that mints them on-device
