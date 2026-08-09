@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Harvest sack: harvest verb / bags unit / season-record icon. -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="24dp" android:height="24dp"
+    android:viewportWidth="24" android:viewportHeight="24">
+    <path android:pathData="M9.5,4.5 C9.5,3.2 10.5,2.5 12,2.5 C13.5,2.5 14.5,3.2 14.5,4.5"
+        android:strokeColor="#FF000000" android:strokeWidth="1.7" android:strokeLineCap="round" />
+    <path android:pathData="M9,6.2 L15,6.2"
+        android:strokeColor="#FF000000" android:strokeWidth="1.7" android:strokeLineCap="round" />
+    <path android:pathData="M9.3,6.2 C6.6,8.8 5,11.6 5,14.8 C5,18.3 8,20.5 12,20.5 C16,20.5 19,18.3 19,14.8 C19,11.6 17.4,8.8 14.7,6.2"
+        android:strokeColor="#FF000000" android:strokeWidth="1.7" android:strokeLineCap="round" android:strokeLineJoin="round" />
+</vector>

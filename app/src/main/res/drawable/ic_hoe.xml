@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Hoe (jembe): labour. -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="24dp" android:height="24dp"
+    android:viewportWidth="24" android:viewportHeight="24">
+    <path android:pathData="M5,20.5 L15.5,10"
+        android:strokeColor="#FF000000" android:strokeWidth="1.7" android:strokeLineCap="round" />
+    <path android:pathData="M13.6,6.4 C15.6,4.1 18.3,3.4 20.6,4.7 C20.2,7.5 18.2,9.6 15.5,10 L13.6,8.1 Z"
+        android:strokeColor="#FF000000" android:strokeWidth="1.7" android:strokeLineCap="round" android:strokeLineJoin="round" />
+</vector>

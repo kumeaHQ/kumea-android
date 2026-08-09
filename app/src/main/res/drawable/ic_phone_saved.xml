@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Phone: the saved-on-phone honesty state. -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="24dp" android:height="24dp"
+    android:viewportWidth="24" android:viewportHeight="24">
+    <path android:pathData="M8,3 h8 a1.8,1.8 0 0 1 1.8,1.8 v14.4 a1.8,1.8 0 0 1 -1.8,1.8 h-8 a1.8,1.8 0 0 1 -1.8,-1.8 V4.8 A1.8,1.8 0 0 1 8,3 Z"
+        android:strokeColor="#FF000000" android:strokeWidth="1.7" android:strokeLineCap="round" android:strokeLineJoin="round" />
+    <path android:pathData="M10.5,5.7 h3 M9.5,13 l1.7,1.7 l3.3,-3.3"
+        android:strokeColor="#FF000000" android:strokeWidth="1.5" android:strokeLineCap="round" android:strokeLineJoin="round" />
+</vector>

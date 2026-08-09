@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Record sheet: the add-record verb (note flow). -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="24dp" android:height="24dp"
+    android:viewportWidth="24" android:viewportHeight="24">
+    <path android:pathData="M6,3.5 h8.5 L18,7 v13.5 H6 Z"
+        android:strokeColor="#FF000000" android:strokeWidth="1.7" android:strokeLineCap="round" android:strokeLineJoin="round" />
+    <path android:pathData="M14.5,3.5 V7 H18"
+        android:strokeColor="#FF000000" android:strokeWidth="1.7" android:strokeLineCap="round" android:strokeLineJoin="round" />
+    <path android:pathData="M9,11.5 h6 M9,15 h4"
+        android:strokeColor="#FF000000" android:strokeWidth="1.7" android:strokeLineCap="round" />
+</vector>

@@ -1,0 +1,217 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">Kumea</string>
+
+    <!-- Auth -->
+    <!-- First screen a new farmer sees — welcoming, not a gate. -->
+    <string name="welcome">Welcome</string>
+    <string name="enter_phone">Enter your phone number</string>
+    <string name="phone_number">Phone number</string>
+    <string name="phone_placeholder">0712 345 678</string>
+    <string name="send_code_hint">We\'ll send you a verification code.</string>
+    <string name="continue_btn">Continue</string>
+    <string name="verify">Verify</string>
+    <string name="enter_code">Enter the 6-digit code we just sent you</string>
+    <string name="verification_code">Verification code</string>
+    <string name="resend_code">Resend code</string>
+    <string name="set_pin">Set your PIN</string>
+    <string name="create_account_title">Create your account</string>
+    <string name="your_name">Your name</string>
+    <string name="your_name_hint">e.g. Vincent Kiprop</string>
+    <string name="pin_instructions">Choose a 4-6 digit PIN. You\'ll use it to sign in.</string>
+    <string name="create_pin">Create PIN</string>
+    <string name="confirm_pin">Confirm PIN</string>
+    <string name="create_account">Create account</string>
+    <string name="enter_pin">Enter your PIN</string>
+    <string name="pin_mismatch">PINs don\'t match</string>
+    <string name="retry">Retry</string>
+
+    <!-- My Farms -->
+    <string name="my_farms">My Farms</string>
+    <string name="add_first_farm">Add your first shamba to get started</string>
+    <string name="no_farms">Add your first farm</string>
+    <string name="log_out">Log out</string>
+    <string name="menu">Menu</string>
+
+    <!-- Farm card -->
+    <string name="crop_beans">Beans</string>
+    <string name="crop_maize">Maize</string>
+    <string name="crop_soya">Soya</string>
+    <string name="acres_fmt">%.1f acre</string>
+    <string name="water_dam">Dam</string>
+    <string name="water_rain">Rain</string>
+    <string name="water_borehole">Borehole</string>
+
+    <!-- Add Farm -->
+    <string name="add_farm">Add Farm</string>
+    <!-- The PLACE's name, never the farmer's — the person's name lives on their account (Build-1). -->
+    <string name="farm_name">Shamba name</string>
+    <string name="farm_name_hint">What you call the place — e.g. Sigona</string>
+    <string name="crop_type">What are you growing?</string>
+    <string name="farm_size">Size (acres)</string>
+    <string name="farm_size_hint">e.g. 0.5</string>
+    <string name="water_source">Water Source</string>
+    <string name="use_location">Use my location</string>
+    <string name="location_set">Location set ✓</string>
+    <string name="save_farm">Save Farm</string>
+
+    <!-- Farm Home -->
+    <string name="farm_home_title" formatted="false">%1$s · %2$s · %.1f acre</string>
+    <string name="notes">Notes</string>
+    <string name="no_notes">No notes yet</string>
+    <string name="add_first_note">Record your first activity, purchase, or sale</string>
+
+    <!-- Biofix card -->
+    <string name="biofix_title">Biofix</string>
+    <string name="biofix_desc">A natural soil treatment that helps your legumes fix more nitrogen. Bigger roots, better pods, higher yield.</string>
+    <string name="biofix_sachets_needed" formatted="false">This shamba needs %d sachet (%d g each)</string>
+    <string name="biofix_price">KSh 1,500 per sachet</string>
+    <string name="biofix_learn_more">Learn more</string>
+    <string name="biofix_tagline">Not perfect, just better.</string>
+
+    <!-- Money summary -->
+    <string name="money">Money</string>
+    <string name="profit">Profit</string>
+    <string name="money_in">In</string>
+    <string name="money_out">Out</string>
+    <string name="no_transactions">No transactions yet</string>
+
+    <!-- Actions -->
+    <string name="sell">Sell</string>
+    <string name="record_sale">Record sale</string>
+    <string name="record_purchase">Record purchase</string>
+    <string name="record_activity">Record activity</string>
+    <string name="sale">Sale</string>
+    <string name="purchase">Purchase</string>
+    <string name="activity">Activity</string>
+
+    <!-- Sync -->
+    <string name="sync_channel_name">Sync</string>
+    <string name="sync_channel_description">Notifies you when your farm data syncs in the background.</string>
+    <string name="sync_success_title">Kumea synced</string>
+    <plurals name="sync_success_uploaded">
+        <item quantity="one">%1$d item uploaded</item>
+        <item quantity="other">%1$d items uploaded</item>
+    </plurals>
+    <plurals name="sync_success_downloaded">
+        <item quantity="one">%1$d item downloaded</item>
+        <item quantity="other">%1$d items downloaded</item>
+    </plurals>
+    <string name="sync_error_title">Kumea couldn\'t sync</string>
+    <string name="sync_error_text">Tap to retry</string>
+
+    <!-- Build-2: planting date -->
+    <string name="planting_title">Planting date</string>
+    <string name="planting_question">When did you plant?</string>
+    <string name="planting_today">Today</string>
+    <string name="planting_yesterday">Yesterday</string>
+    <string name="planting_pick_day">Pick another day</string>
+    <string name="planting_helper">For this field only</string>
+    <string name="planting_save">Save planting date</string>
+    <string name="planting_action">Planting date</string>
+
+    <!-- Build-2: harvest wizard -->
+    <string name="harvest_title">Record harvest</string>
+    <string name="harvest_action">Record harvest</string>
+    <string name="harvest_how_much">How much did you harvest?</string>
+    <string name="harvest_quantity">Amount</string>
+    <string name="harvest_change_later">You can change later</string>
+    <string name="harvest_which_unit">What unit?</string>
+    <string name="unit_bags">Bags</string>
+    <string name="unit_kg">Kg</string>
+    <string name="unit_gorogoro">Gorogoro</string>
+    <string name="harvest_where_went">What happened to the harvest?</string>
+    <string name="harvest_same_unit">Both amounts in %s</string>
+    <string name="harvest_kept">Kept</string>
+    <string name="harvest_sold">Sold</string>
+    <string name="harvest_skip">Skip for now</string>
+    <string name="replant_question">Planting again next season?</string>
+    <string name="replant_yes">Yes, planting again</string>
+    <string name="replant_no">No</string>
+    <string name="replant_which_month">Which month?</string>
+    <string name="harvest_review_line">You harvested %1$s %2$s</string>
+    <string name="replant_review_line">Planting again in %s</string>
+    <string name="replant_review_no">Not planting next season</string>
+    <string name="harvest_save">Save harvest</string>
+
+    <!-- Build-2: proof card -->
+    <string name="season_record">Season record</string>
+    <string name="proof_planted">Planted: %s</string>
+    <string name="proof_harvested">Harvested: %1$s %2$s</string>
+    <string name="proof_replanting">Planting again: %s</string>
+    <string name="proof_replanting_yes">Planting again next season</string>
+    <string name="proof_not_replanting">Not planting next season</string>
+
+    <!-- Build-2: shared -->
+    <string name="next">Next</string>
+    <string name="edit">Edit</string>
+    <string name="ok">OK</string>
+    <string name="cancel">Cancel</string>
+    <string-array name="month_names">
+        <item>Jan</item><item>Feb</item><item>Mar</item><item>Apr</item>
+        <item>May</item><item>Jun</item><item>Jul</item><item>Aug</item>
+        <item>Sep</item><item>Oct</item><item>Nov</item><item>Dec</item>
+    </string-array>
+
+    <!-- Ledger pre-sync state -->
+    <string name="ledger_not_synced">Your money view will appear after this shamba syncs. Connect to the network and pull to refresh.</string>
+
+    <!-- Errors -->
+    <string name="error_network">No connection. Check your network and try again.</string>
+    <string name="error_unknown">Something went wrong. Please try again.</string>
+    <string name="invested">Invested so far</string>
+    <string name="loss">Loss</string>
+    <string name="harvest_coming">Harvest still to come</string>
+    <string name="full_breakdown">Full breakdown →</string>
+
+    <!-- Build-3: brand -->
+    <string name="tagline">Not perfect, just better.</string>
+
+    <!-- Build-3: verbs & FarmHome -->
+    <string name="verb_add_record">Add record</string>
+    <string name="shughuli">Activity log</string>
+    <string name="biofix_link_row">Biofix for your beans</string>
+
+    <!-- Build-3: sync felt states. Honest words only — a save is "on phone"
+         until the server confirms it; NOTHING here ever says "verified". -->
+    <string name="saved_on_phone">Saved to phone</string>
+    <string name="synced">Synced</string>
+    <string name="on_phone">On phone</string>
+    <string name="synced_at">Synced · %s</string>
+
+    <!-- Build-3: add record form -->
+    <string name="note_type">Type</string>
+    <string name="purchase_what">What did you buy?</string>
+    <string name="amount_kes">Amount (KES)</string>
+    <string name="cost_optional_kes">Cost (optional, KES)</string>
+    <string name="amount_hint">Digits only, up to 2 decimals</string>
+    <string name="note_label">Note</string>
+    <string name="note_optional">Note (optional)</string>
+    <string name="field_label">Field</string>
+    <string name="no_fields_hint">No fields — pull to refresh</string>
+    <string name="date_label">Date</string>
+    <string name="save">Save</string>
+
+    <!-- Build-3: purchase picklist -->
+    <string name="item_biofix">Biofix sachet</string>
+    <string name="item_seed">Seed</string>
+    <string name="item_fertiliser">Fertiliser</string>
+    <string name="item_herbicide">Herbicide</string>
+    <string name="item_labour">Labour</string>
+    <string name="item_transport">Transport</string>
+    <string name="item_other">Other</string>
+    <string name="category_spray">Spray</string>
+    <string name="category_uncategorised">Uncategorised</string>
+
+    <!-- Build-3: ledger -->
+    <string name="ledger_revenue">Revenue</string>
+    <string name="ledger_costs">Costs</string>
+    <string name="ledger_by_field">By field</string>
+    <string name="ledger_by_category">Costs by category</string>
+    <string name="break_even">Break-even</string>
+    <string name="ledger_load_failed">Couldn\'t load your money view. Check your connection and try again.</string>
+    <string name="ledger_as_of">Reflects synced records as of %s. Pull to refresh your notes first for the latest.</string>
+    <string name="ledger_synced_only">Reflects synced records only. Pull to refresh your notes first for the latest.</string>
+    <string name="ledger_stale_as_of">Offline — showing last known figures from %s. May be outdated.</string>
+    <string name="ledger_stale">Offline — showing last known figures. May be outdated.</string>
+</resources>

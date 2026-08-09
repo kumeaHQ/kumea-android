@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Soil Paper — app background; also the adaptive-icon background so the
+         mark sits on brand paper, not the retired slab green. -->
+    <color name="soil_paper">#F7F3EA</color>
+    <color name="ic_launcher_background">#F7F3EA</color>
+</resources>

@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+    Auto-backup rules. Empty for Sprint 0 — no sensitive data exists yet.
+    Once TokenStore holds real auth tokens (post-2.3), exclude the DataStore file:
+        <exclude domain="file" path="datastore/auth.preferences_pb"/>
+-->
+<full-backup-content>
+</full-backup-content>

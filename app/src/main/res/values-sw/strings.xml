@@ -1,0 +1,212 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Auth -->
+    <string name="welcome">Karibu</string>
+    <string name="enter_phone">Weka nambari yako ya simu</string>
+    <string name="phone_number">Nambari ya simu</string>
+    <string name="phone_placeholder">0712 345 678</string>
+    <string name="send_code_hint">Tutakutumia nambari ya uthibitisho.</string>
+    <string name="continue_btn">Endelea</string>
+    <string name="verify">Thibitisha</string>
+    <string name="enter_code">Weka nambari yenye tarakimu 6 tuliyokutumia</string>
+    <string name="verification_code">Nambari ya uthibitisho</string>
+    <string name="resend_code">Tuma tena</string>
+    <string name="set_pin">Weka PIN yako</string>
+    <string name="create_account_title">Fungua akaunti yako</string>
+    <string name="your_name">Jina lako</string>
+    <string name="your_name_hint">mf. Vincent Kiprop</string>
+    <string name="pin_instructions">Chagua PIN ya tarakimu 4-6. Utaitumia kuingia.</string>
+    <string name="create_pin">Tengeneza PIN</string>
+    <string name="confirm_pin">Thibitisha PIN</string>
+    <string name="create_account">Fungua akaunti</string>
+    <string name="enter_pin">Ingiza PIN yako</string>
+    <string name="pin_mismatch">PIN hazilingani</string>
+    <string name="retry">Jaribu tena</string>
+
+    <!-- My Farms -->
+    <string name="my_farms">Mashamba yangu</string>
+    <string name="add_first_farm">Ongeza shamba lako la kwanza ili kuanza</string>
+    <string name="no_farms">Ongeza shamba lako la kwanza</string>
+    <string name="log_out">Ondoka</string>
+    <string name="menu">Menyu</string>
+
+    <!-- Crops -->
+    <string name="crop_beans">Maharagwe</string>
+    <string name="crop_maize">Mahindi</string>
+    <string name="crop_soya">Soya</string>
+    <string name="acres_fmt">ekari %.1f</string>
+    <string name="water_dam">Bwawa</string>
+    <string name="water_rain">Mvua</string>
+    <string name="water_borehole">Kisima</string>
+
+    <!-- Add Farm -->
+    <string name="add_farm">Ongeza shamba</string>
+    <string name="farm_name">Jina la shamba</string>
+    <string name="farm_name_hint">Jina la mahali — mf. Sigona</string>
+    <string name="crop_type">Unapanda nini?</string>
+    <string name="farm_size">Ukubwa (ekari)</string>
+    <string name="farm_size_hint">mf. 0.5</string>
+    <string name="water_source">Chanzo cha maji</string>
+    <string name="use_location">Tumia mahali nilipo</string>
+    <string name="location_set">Mahali yamewekwa ✓</string>
+    <string name="save_farm">Hifadhi shamba</string>
+
+    <!-- Farm Home -->
+    <string name="farm_home_title" formatted="false">%1$s · %2$s · ekari %.1f</string>
+    <string name="notes">Maelezo</string>
+    <string name="no_notes">Hakuna maelezo bado</string>
+    <string name="add_first_note">Rekodi shughuli, ununuzi, au mauzo yako ya kwanza</string>
+
+    <!-- Biofix card -->
+    <string name="biofix_title">Biofix</string>
+    <string name="biofix_desc">Matibabu ya asili ya udongo inayosaidia mikunde yako kunyonya nitrojeni zaidi. Mizizi mikubwa, maganda bora, mavuno zaidi.</string>
+    <string name="biofix_sachets_needed" formatted="false">Shamba hili linahitaji mfuko %d (gramu %d kila mmoja)</string>
+    <string name="biofix_price">KSh 1,500 kwa mfuko</string>
+    <string name="biofix_learn_more">Jifunze zaidi</string>
+    <string name="biofix_tagline">Sio kamili, bora tu.</string>
+
+    <!-- Money summary -->
+    <string name="money">Pesa</string>
+    <string name="profit">Faida</string>
+    <string name="money_in">Mapato</string>
+    <string name="money_out">Matumizi</string>
+    <string name="no_transactions">Hakuna muamala bado</string>
+
+    <!-- Actions -->
+    <string name="sell">Uza</string>
+    <string name="record_sale">Rekodi mauzo</string>
+    <string name="record_purchase">Rekodi ununuzi</string>
+    <string name="record_activity">Rekodi shughuli</string>
+    <string name="sale">Mauzo</string>
+    <string name="purchase">Ununuzi</string>
+    <string name="activity">Shughuli</string>
+
+    <!-- Sync -->
+    <string name="sync_channel_name">Usawazishaji</string>
+    <string name="sync_channel_description">Inakujulisha wakati data ya shamba inasawazishwa.</string>
+    <string name="sync_success_title">Kumea imesawazishwa</string>
+    <plurals name="sync_success_uploaded">
+        <item quantity="one">Kipengele %1$d kimepakiwa</item>
+        <item quantity="other">Vipengele %1$d vimepakiwa</item>
+    </plurals>
+    <plurals name="sync_success_downloaded">
+        <item quantity="one">Kipengele %1$d kimepakuliwa</item>
+        <item quantity="other">Vipengele %1$d vimepakuliwa</item>
+    </plurals>
+    <string name="sync_error_title">Kumea haikuweza kusawazisha</string>
+    <string name="sync_error_text">Gusa ili ujaribu tena</string>
+
+    <!-- Build-2: planting date -->
+    <string name="planting_title">Tarehe ya kupanda</string>
+    <string name="planting_question">Ulipanda lini?</string>
+    <string name="planting_today">Leo</string>
+    <string name="planting_yesterday">Jana</string>
+    <string name="planting_pick_day">Chagua tarehe nyingine</string>
+    <string name="planting_helper">Kwa shamba hili tu</string>
+    <string name="planting_save">Hifadhi tarehe ya kupanda</string>
+    <string name="planting_action">Tarehe ya kupanda</string>
+
+    <!-- Build-2: harvest wizard -->
+    <string name="harvest_title">Weka mavuno</string>
+    <string name="harvest_action">Weka mavuno</string>
+    <string name="harvest_how_much">Umevuna kiasi gani?</string>
+    <string name="harvest_quantity">Kiasi</string>
+    <string name="harvest_change_later">Unaweza kubadilisha baadaye</string>
+    <string name="harvest_which_unit">Kipimo gani?</string>
+    <string name="unit_bags">Magunia</string>
+    <string name="unit_kg">Kilo</string>
+    <string name="unit_gorogoro">Gorogoro</string>
+    <string name="harvest_where_went">Mavuno yalienda wapi?</string>
+    <string name="harvest_same_unit">Vipimo vyote kwa %s</string>
+    <string name="harvest_kept">Imebaki nyumbani</string>
+    <string name="harvest_sold">Imeuzwa</string>
+    <string name="harvest_skip">Ruka sasa</string>
+    <string name="replant_question">Utapanda tena msimu ujao?</string>
+    <string name="replant_yes">Ndiyo, nitapanda tena</string>
+    <string name="replant_no">Hapana</string>
+    <string name="replant_which_month">Mwezi gani?</string>
+    <string name="harvest_review_line">Umevuna %1$s %2$s</string>
+    <string name="replant_review_line">Utapanda tena %s</string>
+    <string name="replant_review_no">Hutapanda msimu ujao</string>
+    <string name="harvest_save">Hifadhi mavuno</string>
+
+    <!-- Build-2: proof card -->
+    <string name="season_record">Msimu huu</string>
+    <string name="proof_planted">Ilipandwa: %s</string>
+    <string name="proof_harvested">Mavuno: %1$s %2$s</string>
+    <string name="proof_replanting">Atapanda tena: %s</string>
+    <string name="proof_replanting_yes">Atapanda tena msimu ujao</string>
+    <string name="proof_not_replanting">Hatapanda msimu ujao</string>
+
+    <!-- Build-2: shared -->
+    <string name="next">Endelea</string>
+    <string name="edit">Badilisha</string>
+    <string name="ok">Sawa</string>
+    <string name="cancel">Ghairi</string>
+    <string-array name="month_names">
+        <item>Jan</item><item>Feb</item><item>Mac</item><item>Apr</item>
+        <item>Mei</item><item>Jun</item><item>Jul</item><item>Ago</item>
+        <item>Sep</item><item>Okt</item><item>Nov</item><item>Des</item>
+    </string-array>
+
+    <!-- Ledger pre-sync state -->
+    <string name="ledger_not_synced">Muhtasari wa pesa utaonekana baada ya shamba hili kusawazishwa. Unganisha mtandao kisha uvute kusasisha.</string>
+
+    <!-- Errors -->
+    <string name="error_network">Hakuna muunganisho. Angalia mtandao wako ujaribu tena.</string>
+    <string name="error_unknown">Hitilafu imetokea. Tafadhali jaribu tena.</string>
+    <string name="invested">Umewekeza</string>
+    <string name="loss">Hasara</string>
+    <string name="harvest_coming">Bado mavuno</string>
+    <string name="full_breakdown">Muhtasari kamili →</string>
+
+    <!-- Build-3: brand -->
+    <string name="tagline">Sio kamili, bora tu.</string>
+
+    <!-- Build-3: verbs & FarmHome -->
+    <string name="verb_add_record">Ongeza kumbukumbu</string>
+    <string name="shughuli">Shughuli</string>
+    <string name="biofix_link_row">Biofix ya maharagwe</string>
+
+    <!-- Build-3: sync felt states -->
+    <string name="saved_on_phone">Imehifadhiwa kwenye simu</string>
+    <string name="synced">Imesawazishwa</string>
+    <string name="on_phone">Kwenye simu</string>
+    <string name="synced_at">Imesawazishwa · %s</string>
+
+    <!-- Build-3: add record form -->
+    <string name="note_type">Aina</string>
+    <string name="purchase_what">Ulinunua nini?</string>
+    <string name="amount_kes">Kiasi (KES)</string>
+    <string name="cost_optional_kes">Gharama (hiari, KES)</string>
+    <string name="amount_hint">Tarakimu pekee, hadi desimali 2</string>
+    <string name="note_label">Maelezo</string>
+    <string name="note_optional">Maelezo (hiari)</string>
+    <string name="field_label">Sehemu ya shamba</string>
+    <string name="no_fields_hint">Hakuna sehemu — vuta kusasisha</string>
+    <string name="date_label">Tarehe</string>
+    <string name="save">Hifadhi</string>
+
+    <!-- Build-3: purchase picklist -->
+    <string name="item_biofix">Mfuko wa Biofix</string>
+    <string name="item_seed">Mbegu</string>
+    <string name="item_fertiliser">Mbolea</string>
+    <string name="item_herbicide">Dawa ya magugu</string>
+    <string name="item_labour">Kibarua</string>
+    <string name="item_transport">Usafiri</string>
+    <string name="item_other">Nyingine</string>
+    <string name="category_spray">Dawa</string>
+    <string name="category_uncategorised">Bila aina</string>
+
+    <!-- Build-3: ledger -->
+    <string name="ledger_revenue">Mapato</string>
+    <string name="ledger_costs">Matumizi</string>
+    <string name="ledger_by_field">Kwa sehemu</string>
+    <string name="ledger_by_category">Matumizi kwa aina</string>
+    <string name="break_even">Hakuna faida wala hasara</string>
+    <string name="ledger_load_failed">Imeshindwa kupakia muhtasari wa pesa. Angalia mtandao wako ujaribu tena.</string>
+    <string name="ledger_as_of">Inaonyesha kumbukumbu zilizosawazishwa hadi %s. Vuta kusasisha maelezo yako kwanza kupata mpya.</string>
+    <string name="ledger_synced_only">Inaonyesha kumbukumbu zilizosawazishwa pekee. Vuta kusasisha maelezo yako kwanza kupata mpya.</string>
+    <string name="ledger_stale_as_of">Nje ya mtandao — inaonyesha takwimu za mwisho kutoka %s. Huenda zimepitwa.</string>
+    <string name="ledger_stale">Nje ya mtandao — inaonyesha takwimu za mwisho zinazojulikana. Huenda zimepitwa.</string>
+</resources>
