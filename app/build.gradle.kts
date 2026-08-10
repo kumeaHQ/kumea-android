@@ -26,6 +26,14 @@ android {
         }
     }
 
+    // MigrationTestHelper loads the exported schema JSONs from the androidTest
+    // *assets*, which is not where room.schemaLocation writes them. Without this
+    // the helper cannot find 10.json and fails at construction, before it tests
+    // anything.
+    sourceSets {
+        getByName("androidTest").assets.srcDir("$projectDir/schemas")
+    }
+
     buildTypes {
         debug {
             isMinifyEnabled = false
@@ -117,4 +125,5 @@ dependencies {
     testImplementation(libs.kotlinx.coroutines.test)
     androidTestImplementation(libs.androidx.junit)
     androidTestImplementation(libs.androidx.espresso.core)
+    androidTestImplementation(libs.androidx.room.testing)
 }

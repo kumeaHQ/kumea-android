@@ -8,10 +8,12 @@ import androidx.room.RoomDatabase
  * Version 10 (Build-2): fields gains plantedAt; new harvests table. FIRST
  * NON-DESTRUCTIVE MIGRATION — real user data exists from v10 onward; every
  * future version bump MUST ship a Migration (destructive fallback removed).
+ * Version 11 (KWAP-01 step 1): farms gains farmerUserId + registeredByAgentId,
+ * so a farm can belong to someone other than the account that created it.
  */
 @Database(
     entities = [AgentEntity::class, FarmEntity::class, FieldEntity::class, HarvestEntity::class, NoteEntity::class, OrderEntity::class, SyncConflictEntity::class],
-    version = 10,
+    version = 11,
     exportSchema = true,
 )
 abstract class KumeaDatabase : RoomDatabase() {

@@ -59,6 +59,28 @@ object DatabaseModule {
         }
     }
 
+    /**
+     * KWAP-01 step 1 (v10 → v11): farms gains farmerUserId + registeredByAgentId.
+     *
+     * Both nullable with no default, so every existing row reads null — which is
+     * exactly the pre-v11 meaning: self-owned, registered by nobody on anyone's
+     * behalf. Additive only; no row is rewritten, no data is touched.
+     *
+     * Written against the exported `10.json` farms table, not inferred:
+     * TEXT affinity, nullable, no index, no FK — matching `referrerAgentId`,
+     * whose agent id is likewise unconstrained on-device because the agent
+     * roster syncs separately and may arrive after the farm.
+     */
+    // `internal`, not `private`: KumeaDatabaseMigrationTest exercises this exact
+    // object. A migration test that re-declares the DDL tests a copy, and the
+    // copy is not what ships.
+    internal val MIGRATION_10_11 = object : Migration(10, 11) {
+        override fun migrate(db: SupportSQLiteDatabase) {
+            db.execSQL("ALTER TABLE `farms` ADD COLUMN `farmerUserId` TEXT")
+            db.execSQL("ALTER TABLE `farms` ADD COLUMN `registeredByAgentId` TEXT")
+        }
+    }
+
     @Provides
     @Singleton
     fun provideKumeaDatabase(
@@ -71,7 +93,7 @@ object DatabaseModule {
         // DESTRUCTIVE FALLBACK REMOVED (Build-2 T0). Real user data exists on
         // devices — from v10 on, every schema change ships a written Migration.
         // A missing migration now crashes on open instead of wiping the farm.
-        .addMigrations(MIGRATION_9_10)
+        .addMigrations(MIGRATION_9_10, MIGRATION_10_11)
         .build()
 
     @Provides
