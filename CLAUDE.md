@@ -49,7 +49,7 @@ app/src/main/java/co/ke/kumea/
   data/
     auth/TokenStore.kt         # DataStore: access_token, refresh_token
     local/                     # Room entities + DAOs: Agent, Farm, Field, Harvest,
-                               #   Note, Order, SyncConflict + KumeaDatabase (v10)
+                               #   Note, Order, SyncConflict + KumeaDatabase (v11)
     remote/                    # KumeaApi, AuthRefreshApi, ApiErrors
       dto/                     # 21 request/response DTOs
       interceptor/             # AuthInterceptor, TokenAuthenticator
@@ -135,14 +135,21 @@ If you find `catch (Exception) { clearSession() }` anywhere, flag it immediately
 
 ### Room migration discipline — hardest constraint in the project
 
-**The DB is at version 10. Destructive fallback has been permanently removed
+**The DB is at version 11. Destructive fallback has been permanently removed
 (`di/DatabaseModule.kt`). Every schema change from v10 onward MUST ship a
 hand-written `Migration`.**
 
-Real user data exists on real devices. `fallbackToDestructiveMigration()` is not
-a debugging convenience here — it wipes a farmer's records. A missing migration
-now crashes on open instead, which is the *desired* failure mode: loud,
-immediate, at the gate, never silent data loss.
+`fallbackToDestructiveMigration()` is not a debugging convenience here — it wipes
+a farmer's records. A missing migration now crashes on open instead, which is the
+*desired* failure mode: loud, immediate, at the gate, never silent data loss.
+
+**Correction (11 Aug 2026):** earlier versions of this file said *"real user data
+exists on Mulu's phone"*, and TICKET-KWAP-01 repeated it. **It is not true.** All
+three devices in use are test handsets and BWAP S1 data was never entered into the
+app. There is no irreplaceable data on any device *today* — a bad migration costs
+a reinstall, not a season. The discipline below still stands unchanged: it is
+protecting the data that arrives the moment a WAO registers a real farmer. Do not
+use this correction to argue for destructive fallback.
 
 Rules:
 
@@ -153,9 +160,11 @@ Rules:
   nullability, indices, FK clauses — or Room throws on open. Diff against the
   exported schema, don't hand-guess.
 - `exportSchema = true`; JSON schemas are committed at `app/schemas/co.ke.kumea.data.local.KumeaDatabase/`
-  (`1.json` … `10.json`). The new `N.json` is part of the change.
-- `MIGRATION_9_10` (Build-2) is the worked example: `ALTER TABLE fields ADD COLUMN
-  plantedAt TEXT` + `CREATE TABLE harvests` + its index.
+  (`1.json` … `11.json`). The new `N.json` is part of the change.
+- Worked examples, both in `di/DatabaseModule.kt`: `MIGRATION_9_10` (Build-2) —
+  `ALTER TABLE fields ADD COLUMN plantedAt TEXT` + `CREATE TABLE harvests` + its
+  index; `MIGRATION_10_11` (KWAP-01 step 1) — two nullable `TEXT` columns added
+  to `farms`, written against `10.json` and validated against Room's `11.json`.
 
 ### Sync conflict resolution
 
@@ -258,20 +267,53 @@ Full spec: `/Users/kumea/Desktop/Kumea-Claude/TICKET-KWAP-01-farmer-registration
 Blocks the entire KWAP research track — 20 sub-counties, 39 WAOs, ~395 farmers.
 
 **Read the spec before starting. This is a data-model change, not a screen.**
-`FarmEntity` has no owner field — no `userId`, no `farmerId`, no `ownerId` — so a
+`FarmEntity` had no owner field — no `userId`, no `farmerId`, no `ownerId` — so a
 farm belongs implicitly to whoever holds the JWT, and the server enforces that via
-`assertFarmOwned`. An Order's `farmerId` *is* a Farm id. In the current model the
-farm is the farmer, so an officer tapping "add farmer" today would attach that farm
-to their own account.
+`assertFarmOwned`. An Order's `farmerId` *is* a Farm id. In this model the farm is
+the farmer, so registering a farmer on someone's behalf attaches that farm to the
+registrar's own account.
 
 Sequence (1–3 are the real work):
 
-1. `farmerUserId` + `registeredByAgentId` on `FarmEntity`, with a written `MIGRATION_10_11`
-2. API on-behalf creation, guarded on agent role + ward
+1. ✅ **Done** (commit `ad9177c`) — `farmerUserId` + `registeredByAgentId` on
+   `FarmEntity`, `MIGRATION_10_11` written and wired, DB at v11, `11.json` exported
+2. API on-behalf creation, guarded on agent role + ward ← **next**
 3. Ward-scoped read endpoint (the officer screen's honest gap notice is waiting on it)
 4. Officer farmer-create + ward directory
 5. Agent farmer-create + own roster
 6. Bulk paste-a-list intake
+
+Steps 2 and 3 are server work: `kumea-api` lives at `~/Desktop/_old-repos/kumea-api`
+— the folder name reads like an archive but it is a live git repo with its own
+`CLAUDE.md` and a Railway deploy.
+
+**Three traps in step 2, all from `kumea-api/HANDOVER.md`:**
+
+- **Do not relax `assertFarmOwned` in place — add a sibling.** That one function
+  does two jobs: it stops you editing someone else's farm, *and* it stops an agent
+  recording an order against a farm that isn't theirs. The second sits directly on
+  the commission path (`Order.agentId` is what accrual reads). Widening it in place
+  silently widens order attribution. Add `assertMayCreateFarmFor` (or similar) and
+  check every call site first.
+- **Reject with 403, not 400.** The client retries non-2xx forever unless the
+  repository handles the code explicitly; 403 is terminal, 400 is not. A 400 on the
+  ward/role rejection poisons the offline sync queue permanently.
+- **The e2e suite cannot see the database.** The specs run against a hand-written
+  `PrismaStub`, so they prove nothing about CHECK constraints, triggers, FKs or
+  cascades — `orders_commercial_attribution_guard` is a live trigger and
+  `Order.farmerId` *is* a Farm id. Read the migrations, not the tests.
+
+**Client follow-up, timed to step 2:** `FarmRepository.pullSince()`
+([FarmRepository.kt:177](app/src/main/java/co/ke/kumea/data/repository/FarmRepository.kt:177))
+rebuilds `FarmEntity` field by field and does not yet map the two new columns —
+correct for now, since the DTO doesn't carry them. Map them **in the same commit
+the DTO gains them**. Later, and every pull silently nulls them locally, which
+breaks the officer directory (a local Room read) while leaving the server correct.
+
+**Live mis-attribution, unfixed:** `KumeaNavHost.kt:181` routes the agent home's
+"New farmer" button to `Routes.FARM_CREATE`, commented `INTERIM`. Farmers an agent
+registers today become farms owned by the agent. Step 1 added the fields; nothing
+sets them yet. Closed by steps 2 + 5.
 
 ⚠️ **The trap: do NOT set `referrerAgentId` when an officer registers a farmer.**
 `registeredByAgentId` records who typed it in; `referrerAgentId` records who gets
@@ -290,11 +332,19 @@ resolution, the officer/agent split in `Persona`, `FarmCreateScreen`.
 - **Ticket 2.3 — Background Sync.** `SyncScheduler` shipped and armed from
   `KumeaApplication.onCreate()`. See "Sync scheduling" above.
 
-## Stale docs in this repo
+## Other docs in this repo
 
-Treat the other Markdown files at the repo root with suspicion — `BUILD-STATUS.md`
-(26 June) says the officer surface is "Not built", which is wrong and has already
-caused a wrong answer. Verify against code before trusting any of them.
+`BUILD-STATUS.md`: the **kumea-android** section was reconciled against the code on
+11 Aug 2026 and can be trusted. Its **kumea-api** section is still as of 26 Jun and
+has not been re-verified — check it against `kumea-api` before relying on it.
+
+`FARMER-FLOW-HANDOFF.md`, `KM-CONTEXT.md`, `KUMEA-STRATEGY-CANONICAL.md` are
+unverified. Treat them with suspicion and check against code before trusting them.
+
+The 26 Jun version of `BUILD-STATUS.md` said the officer surface was "Not built"
+when `OfficerHomeScreen` had existed for weeks, and that caused a wrong answer in
+the week of 4 Aug. When you find a doc that disagrees with the code, fix the doc in
+the same session — that is how this one got expensive.
 
 Also outstanding from the KWAP spec: the cost-category enum is still `BIOFIX`,
 client-first; the product is Kumea N. RB must confirm/add the server-side value

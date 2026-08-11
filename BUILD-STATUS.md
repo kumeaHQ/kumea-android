@@ -1,6 +1,13 @@
 # BUILD-STATUS.md
-> Updated: 26 June 2026 12:10 EAT
+> Updated: 11 August 2026 — kumea-android section reconciled against the code.
 > Tracks what is built, verified, and pending across all three repos.
+>
+> **The kumea-android tables below were six weeks stale (26 Jun) and said the
+> officer surface did not exist. It does.** That error caused a wrong answer in
+> the week of 4 Aug. Statuses in the kumea-android section are now checked
+> against files on disk; where a claim could not be checked from this repo it
+> says so. The kumea-api section is **not** re-verified — it is still as of
+> 26 Jun and must be checked against `kumea-api` before it is trusted.
 
 ---
 
@@ -68,18 +75,51 @@
 | assembleDebug + unit tests | ✅ Green | Test fakes updated for Build-2 harvest endpoints (were broken pre-Build-3) |
 | Device contrast spot-check (daylight, Redmi) | ⏳ Pending | No device on adb during the pass |
 
-### 🔜 Pending (Sprint 1: Notes → Field → Ledger)
+### Sprint 1 (Notes → Field → Ledger) — verified against code, 11 Aug 2026
+
+All three persona surfaces exist and are routed from `LandingScreen` via
+`PersonaRepository`. There are **10 screen packages** under `ui/screen/`
+(agent, auth, distribution, farm, field, home, ledger, note, officer, order)
+across 108 Kotlin files.
 
 | Component | Status | Notes |
 |---|---|---|
-| **Farmer surface** | Partial | Farm + field exists. Missing: order history, product info, crop guidance |
-| **Village Agent surface** | Not built | Missing: order recording, farmer registration flow, earnings dashboard |
-| **Officer surface** | Not built | Missing: farmer directory, agent directory, referral tracking. MUST have zero commercial surface. |
-| Notes capture | Not built | Observation logging per farm/field |
-| Field detail (planting dates, harvest) | Not built | Extended field model |
-| Ledger / earnings view | Not built | Read-only commission surface from API |
-| Agent registration flow | Not built | Phone → OTP → role selection → agent code |
-| Offline order recording | Not built | Agent records sale in field → syncs when online |
+| **Farmer surface** | ✅ Built | `FarmList` → `FarmHome` → fields, notes, planting date, harvest wizard, per-farm ledger. Missing: order-history list, crop guidance |
+| **Village Agent surface** | ✅ Built | `VillageAgentHomeScreen` + ViewModel. Record sale → `OrderCreate`; earnings → `Ledger`. ⚠️ farmer registration is wired but **wrong** — see KWAP-01 row |
+| **Officer surface** | ✅ Built | `OfficerHomeScreen` (201 lines) + ViewModel (150). Ward outcomes card, agent endorsement list, honest gap notice at `OfficerHomeScreen.kt:136`. Zero commercial content — enforced in the type system (`Persona.allowsEarnings`, no `commissionRuleId` on `AgentEntity`) |
+| Notes capture | ✅ Built | `NoteCreateScreen` + `NoteRepository`, per farm/field |
+| Field detail (planting dates, harvest) | ✅ Built | `PlantingDateScreen`, `HarvestWizardScreen` (Build-2), `harvests` table via `MIGRATION_9_10` |
+| Ledger / earnings view | ✅ Built | `LedgerScreen` + `LedgerRepository` / `CommissionRepository` |
+| Offline order recording | ✅ Built | `OrderCreateScreen` + `OrderRepository : SyncableRepository` |
+| Agent registration flow | Not built | Agents are still provisioned server-side. The distribution demo used to mint agent rows on the device; that was removed (commit `55a0906`) |
+| Officer farmer directory | Not built | **Blocked on the server ward report** — KWAP-01 step 3. This is what the gap notice on the officer home is waiting for |
+
+### ⚠️ KWAP-01 — farmer registration by officers and agents
+
+Spec: `~/Desktop/Kumea-Claude/TICKET-KWAP-01-farmer-registration.md`.
+Blocks the KWAP research track (20 sub-counties, 39 WAOs, ~395 farmers).
+
+`FarmEntity` had no owner field, so a farm belonged implicitly to whoever held
+the JWT — *the farm is the farmer*. Registering a farmer on someone's behalf
+attached that farm to the registrar's own account.
+
+| Step | Status |
+|---|---|
+| 1. `farmerUserId` + `registeredByAgentId` + `MIGRATION_10_11` (client) | ✅ Done — commit `ad9177c`, DB at v11, `11.json` exported |
+| 2. API on-behalf creation, role + ward guarded | Not started — `kumea-api` |
+| 3. Ward-scoped read endpoint | Not started — `kumea-api` |
+| 4. Officer farmer-create + ward directory | Not started |
+| 5. Agent farmer-create + own roster | Not started |
+| 6. Bulk paste-a-list intake | Not started — `kwap/KWAP-FARMER-REGISTER.xlsx` is the system of record until then |
+
+**Live mis-attribution, unfixed:** `KumeaNavHost.kt:181` routes the agent home's
+"New farmer" button straight to `Routes.FARM_CREATE`, commented `INTERIM`. Every
+farmer an agent registers today becomes a farm owned by *the agent*. Step 1 added
+the fields but nothing sets them yet. Closed by steps 2 + 5.
+
+**Do not set `referrerAgentId` on officer-registered farmers.** It records who
+gets commission, not who typed it in — that is `registeredByAgentId`. The
+commission engine has been live since 26 Jun and runs effective from 1 Jun.
 
 ### ❓ Unknown (needs UI assessment)
 
@@ -108,6 +148,10 @@
 - [ ] Real device against Railway: farmer registration → order → sync → verify on server
 - [ ] Real device against Railway: agent places order → earnings surface shows accrued cents
 - [ ] Officer logs in → verifies ZERO commercial surface (no earnings tab, no commission mention)
+      — **cheap to close now.** No new code needed: create an `AgentEntity` row
+      server-side with `role = "extension_officer"`, a `ward` matching the agent
+      records, and `linkedUserId` set. Phone → OTP → PIN routes to `OFFICER_HOME`
+      via `PersonaRepository`. Open since 26 Jun.
 - [ ] Offline test: create farm + order in airplane mode → go online → sync → verify on server
 - [ ] Money display: KES amounts formatted with comma separators, never raw cents
 - [ ] Error handling: network failure shows message, not white screen
