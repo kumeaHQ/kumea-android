@@ -23,12 +23,22 @@ import javax.inject.Inject
 data class FieldOption(val id: String, val name: String)
 
 /**
- * The purchase picklist (Build-3 §5): what a farmer buys, as icon cards. Each
- * item writes an existing-column costCategory — Herbicide deliberately maps to
- * the wire's SPRAY value; only BIOFIX is new (server enum check with RB).
+ * The purchase picklist (Build-3 §5): what a farmer buys, as icon cards.
+ *
+ * EVERY ITEM MAPS TO A CATEGORY THE SERVER ALREADY ACCEPTS. Herbicide has
+ * always written the wire's SPRAY; Kumea N now writes OTHER for the same
+ * reason. It previously wrote a client-invented `BIOFIX` that the server's enum
+ * never gained, so every Kumea N purchase was rejected with a validation 400 and
+ * retried for ever — 400 is not terminal client-side. Fixed in v12; the stranded
+ * rows are rewritten by MIGRATION_11_12.
+ *
+ * OTHER, not SEED: an inoculant is not seed, and folding it into seed spend
+ * would quietly inflate the one cost line KWAP is trying to measure. OTHER loses
+ * only the label, and the label is [labelRes]'s job anyway. When RB adds a real
+ * server value, change this one mapping — and not before.
  */
 enum class PurchaseItem(val category: CostCategory) {
-    BIOFIX_SACHET(CostCategory.BIOFIX),
+    KUMEA_N_SACHET(CostCategory.OTHER),
     SEED(CostCategory.SEED),
     FERTILISER(CostCategory.FERTILISER),
     HERBICIDE(CostCategory.SPRAY),

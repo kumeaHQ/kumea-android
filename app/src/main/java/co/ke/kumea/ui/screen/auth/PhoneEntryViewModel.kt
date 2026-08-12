@@ -3,6 +3,7 @@ package co.ke.kumea.ui.screen.auth
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import co.ke.kumea.data.repository.AuthRepository
+import co.ke.kumea.util.normalizeKenyanPhone
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -51,20 +52,4 @@ class PhoneEntryViewModel @Inject constructor(
     fun onNavigated() {
         _state.update { it.copy(navigateToOtp = null) }
     }
-}
-
-/**
- * Normalise a Kenyan mobile number to +2547xxxxxxxx / +2541xxxxxxxx form.
- * Returns null if the input isn't a valid Safaricom/Airtel-style number.
- */
-internal fun normalizeKenyanPhone(input: String): String? {
-    val digits = input.trim().filter { it.isDigit() || it == '+' }
-    val normalized = when {
-        digits.startsWith("+254") -> digits
-        digits.startsWith("254") -> "+$digits"
-        digits.startsWith("0") -> "+254" + digits.drop(1)
-        digits.length == 9 && (digits.startsWith("7") || digits.startsWith("1")) -> "+254$digits"
-        else -> digits
-    }
-    return if (Regex("^\\+254[17]\\d{8}$").matches(normalized)) normalized else null
 }

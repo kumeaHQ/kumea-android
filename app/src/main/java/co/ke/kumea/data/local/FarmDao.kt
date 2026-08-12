@@ -26,6 +26,23 @@ interface FarmDao {
     suspend fun getById(id: String): FarmEntity?
 
     /**
+     * The officer's / agent's register: farms THIS agent typed in (KWAP-01
+     * step 4). Not the same question as `getAllActive()`, which answers "farms I
+     * own" — the two lists overlap heavily this season (farmerUserId is left
+     * null, so the registrar is also the owner) and will diverge the moment
+     * on-behalf creation is switched on.
+     *
+     * Ordered by createdAt, not updatedAt: a register reads in the order things
+     * were entered, and a background sync bumping updatedAt must not reshuffle
+     * a list a WAO is halfway down.
+     */
+    @Query(
+        "SELECT * FROM farms WHERE registeredByAgentId = :agentId " +
+            "AND deletedAt IS NULL AND syncAction != 'DELETE' ORDER BY createdAt DESC"
+    )
+    fun getRegisteredBy(agentId: String): Flow<List<FarmEntity>>
+
+    /**
      * Rows with pending local changes that need to be pushed to the server.
      * Ordered oldest-first to make conflict debugging predictable.
      *
@@ -40,6 +57,15 @@ interface FarmDao {
 
     @Query("SELECT MAX(updatedAt) FROM farms")
     suspend fun getLatestUpdatedAt(): String?
+
+    /**
+     * Existing rows for a batch of server ids, so a pull can carry forward the
+     * columns the server does not know about (cropType, acres, useGps). Without
+     * this the upsert would replace them with nulls on every pull — the failure
+     * KWAP-01 §4.2③ describes, which reads as a server bug and is a device one.
+     */
+    @Query("SELECT * FROM farms WHERE id IN (:ids)")
+    suspend fun getByIds(ids: List<String>): List<FarmEntity>
 
     /**
      * Upsert all farms from a server pull.

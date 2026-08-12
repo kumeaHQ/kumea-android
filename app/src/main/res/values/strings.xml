@@ -61,13 +61,16 @@
     <string name="no_notes">No notes yet</string>
     <string name="add_first_note">Record your first activity, purchase, or sale</string>
 
-    <!-- Biofix card -->
-    <string name="biofix_title">Biofix</string>
-    <string name="biofix_desc">A natural soil treatment that helps your legumes fix more nitrogen. Bigger roots, better pods, higher yield.</string>
-    <string name="biofix_sachets_needed" formatted="false">This shamba needs %d sachet (%d g each)</string>
-    <string name="biofix_price">KSh 1,500 per sachet</string>
-    <string name="biofix_learn_more">Learn more</string>
-    <string name="biofix_tagline">Not perfect, just better.</string>
+    <!-- Kumea N card. Renamed from Biofix 12 Aug 2026 — the product is
+         Kumea N everywhere: labels, pack codes, both locales. -->
+    <string name="kumea_n_title">Kumea N</string>
+    <string name="kumea_n_desc">A natural soil treatment that helps your legumes fix more nitrogen. Bigger roots, better pods, higher yield.</string>
+    <string name="kumea_n_sachets_needed" formatted="false">This shamba needs %d sachet (%d g each)</string>
+    <!-- 150 g farmer price, PRICE-MATRIX-LOCKED 12 Aug. Still a fixed string:
+         price-derived-from-pack-size is Batch B and not in this change. -->
+    <string name="kumea_n_price">KSh 1,500 per 150 g sachet</string>
+    <string name="kumea_n_learn_more">Learn more</string>
+    <string name="kumea_n_tagline">Not perfect, just better.</string>
 
     <!-- Money summary -->
     <string name="money">Money</string>
@@ -170,7 +173,7 @@
     <!-- Build-3: verbs & FarmHome -->
     <string name="verb_add_record">Add record</string>
     <string name="shughuli">Activity log</string>
-    <string name="biofix_link_row">Biofix for your beans</string>
+    <string name="kumea_n_link_row">Kumea N for your beans</string>
 
     <!-- Build-3: sync felt states. Honest words only — a save is "on phone"
          until the server confirms it; NOTHING here ever says "verified". -->
@@ -193,7 +196,7 @@
     <string name="save">Save</string>
 
     <!-- Build-3: purchase picklist -->
-    <string name="item_biofix">Biofix sachet</string>
+    <string name="item_kumea_n">Kumea N sachet</string>
     <string name="item_seed">Seed</string>
     <string name="item_fertiliser">Fertiliser</string>
     <string name="item_herbicide">Herbicide</string>

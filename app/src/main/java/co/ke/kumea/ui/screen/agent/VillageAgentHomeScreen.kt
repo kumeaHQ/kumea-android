@@ -38,7 +38,6 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
-import co.ke.kumea.BuildConfig
 import co.ke.kumea.R
 import co.ke.kumea.data.local.OrderEntity
 import co.ke.kumea.data.repository.EarningsSurface
@@ -57,7 +56,6 @@ import co.ke.kumea.util.Money
 fun VillageAgentHomeScreen(
     onRecordSale: () -> Unit,
     onRegisterFarmer: () -> Unit,
-    onOpenDistributionDemo: () -> Unit,
     onLoggedOut: () -> Unit,
     viewModel: VillageAgentHomeViewModel = hiltViewModel(),
 ) {
@@ -83,10 +81,6 @@ fun VillageAgentHomeScreen(
                     // Replaced by the full AS-1 register-farmer flow (inline capture,
                     // referrerAgentId, proper copy) — see AGENT-SALE-LOOP-TICKET.
                     TextButton(onClick = onRegisterFarmer) { Text("New farmer") }
-                    // Developer harness — never reachable by real users (handoff §2).
-                    if (BuildConfig.DEBUG) {
-                        TextButton(onClick = onOpenDistributionDemo) { Text("Demo") }
-                    }
                     TextButton(onClick = { viewModel.logout() }) { Text("Log out") }
                 },
             )

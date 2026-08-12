@@ -40,7 +40,7 @@ import co.ke.kumea.data.local.OrderChannels
 import co.ke.kumea.util.Money
 
 /**
- * Record a Biofix sale (P1-T3). Channel is a forced explicit choice — there is
+ * Record a Kumea N sale (P1-T3). Channel is a forced explicit choice — there is
  * no default chip, mirroring the server's REQUIRED channel. The agent picker
  * only offers commission-eligible agents (officers are never shown; the server
  * would reject them anyway). Save is ONLINE: a server rejection surfaces its

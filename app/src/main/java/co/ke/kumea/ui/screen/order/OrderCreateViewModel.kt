@@ -26,9 +26,21 @@ data class FarmerOption(val id: String, val name: String)
 data class AgentOption(val id: String, val agentCode: String, val role: String, val region: String)
 
 /**
- * Biofix pack sizes. A fixed list until the SKU catalogue becomes an entity.
- * Canonical packs (14 Jun lock): 150 g = 1-acre anchor SKU, 50 g = smallholder /
- * demo format. 100 g is RETIRED and 500 g never existed — do not reintroduce.
+ * Kumea N pack sizes. A fixed list until the SKU catalogue becomes an entity.
+ *
+ * STALE ON PURPOSE, AND ONLY HERE. The 14 Jun lock these codes encode (150 g
+ * anchor + 50 g smallholder; 100 g retired) was SUPERSEDED on 11 Aug: three pack
+ * sizes — 50 / 100 / 150 g — with prices derived from the pack rather than
+ * typed, and pack codes reading Kumea N rather than `BFX-`. See
+ * PRICE-MATRIX-LOCKED.md (12 Aug) for the full matrix.
+ *
+ * None of that is done here, deliberately. Changing the catalogue is only half a
+ * change without the price rules it exists to drive, both sit on the commission
+ * path, and one question in that document is still open ("what is the 100 g pack
+ * for?" — probably forage, which decides its dosage line). Batch B, on its own
+ * commit, before the first real sale. `orders.sku` is free TEXT server-side with
+ * no CHECK, so renaming the codes is safe whenever it happens; historical rows
+ * keep `BFX-`.
  */
 val SkuOptions = listOf("BFX-150G", "BFX-50G")
 

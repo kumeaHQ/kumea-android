@@ -4,17 +4,23 @@ import android.util.Log
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import co.ke.kumea.data.local.AgentEntity
+import co.ke.kumea.data.local.FarmEntity
 import co.ke.kumea.data.repository.AgentRepository
 import co.ke.kumea.data.repository.AuthRepository
+import co.ke.kumea.data.repository.FarmRepository
 import co.ke.kumea.data.repository.PersonaRepository
 import co.ke.kumea.domain.model.Persona
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.flatMapLatest
+import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 import javax.inject.Inject
@@ -34,6 +40,12 @@ data class OfficerUiState(
     val endorseable: List<AgentEntity> = emptyList(),
     val activeAgentsInWard: Int = 0,
     val endorsedByMeCount: Int = 0,
+    /**
+     * Farmers this officer has registered (KWAP-01 step 4). Read from Room via
+     * `registeredByAgentId`, so it counts rows that are still pending push too —
+     * a WAO who registered five farmers on a bus with no signal should see five.
+     */
+    val farmersRegisteredByMe: Int = 0,
     val loaded: Boolean = false,
 )
 
@@ -42,23 +54,32 @@ data class OfficerUiState(
  * commission, no price/margin — this ViewModel has no money type at all, and the
  * earnings repository is not even injected.
  *
- * Ward outcomes are the non-commercial figures derivable on-device from the
- * channel-wide /agents roster: active agents in ward, and village_agents this
- * officer has endorsed. (Ward farmer-registration and sales totals are NOT on the
- * device — /farms and /orders are user-scoped server-side — so they await a
- * server ward-report endpoint; see the screen's honesty note.)
+ * Ward outcomes are the non-commercial figures derivable on-device: active
+ * agents in ward and village_agents this officer has endorsed, both from the
+ * channel-wide /agents roster — plus, since KWAP-01 step 4, farmers she has
+ * registered, from `GET /farms?registeredBy=me` cached into Room.
+ *
+ * Ward SALES totals are still absent, and still honestly flagged. They need a
+ * server ward report that does not exist, and they are money — which this
+ * surface will never show.
  */
 @HiltViewModel
 class OfficerHomeViewModel @Inject constructor(
     private val agentRepository: AgentRepository,
+    private val farmRepository: FarmRepository,
     private val personaRepository: PersonaRepository,
     private val authRepository: AuthRepository,
 ) : ViewModel() {
 
     private val myAgent = MutableStateFlow<AgentEntity?>(null)
 
+    @OptIn(ExperimentalCoroutinesApi::class)
+    private val myRegistrations: Flow<List<FarmEntity>> = myAgent.flatMapLatest { me ->
+        if (me == null) flowOf(emptyList()) else farmRepository.getRegisteredBy(me.id)
+    }
+
     val ui: StateFlow<OfficerUiState> =
-        combine(myAgent, agentRepository.getAllActive()) { me, all ->
+        combine(myAgent, agentRepository.getAllActive(), myRegistrations) { me, all, registered ->
             val ward = me?.ward
             val inWard = if (ward.isNullOrBlank()) emptyList()
             else all.filter { it.ward == ward && it.status == "active" }
@@ -70,6 +91,7 @@ class OfficerHomeViewModel @Inject constructor(
                     .sortedBy { it.agentCode },
                 activeAgentsInWard = inWard.size,
                 endorsedByMeCount = if (me == null) 0 else all.count { it.endorsedById == me.id },
+                farmersRegisteredByMe = registered.size,
                 loaded = true,
             )
         }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), OfficerUiState())
@@ -122,6 +144,10 @@ class OfficerHomeViewModel @Inject constructor(
             try {
                 agentRepository.pushPending()
                 agentRepository.pullSince()
+                // Registrations too, so the count on this card is not stale
+                // relative to the directory the officer taps through to.
+                farmRepository.pushPending()
+                farmRepository.pullRegisteredByMe()
             } catch (e: CancellationException) {
                 throw e
             } catch (e: Exception) {

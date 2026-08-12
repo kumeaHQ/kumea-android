@@ -11,9 +11,13 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Add
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.ExtendedFloatingActionButton
+import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Scaffold
@@ -42,6 +46,8 @@ import co.ke.kumea.data.local.AgentEntity
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun OfficerHomeScreen(
+    onRegisterFarmer: () -> Unit,
+    onOpenFarmerDirectory: () -> Unit,
     onLoggedOut: () -> Unit,
     viewModel: OfficerHomeViewModel = hiltViewModel(),
 ) {
@@ -76,6 +82,13 @@ fun OfficerHomeScreen(
             )
         },
         snackbarHost = { SnackbarHost(snackbarHostState) },
+        floatingActionButton = {
+            ExtendedFloatingActionButton(
+                onClick = onRegisterFarmer,
+                icon = { Icon(Icons.Default.Add, contentDescription = null) },
+                text = { Text("Register a farmer") },
+            )
+        },
     ) { padding ->
         LazyColumn(
             modifier = Modifier
@@ -84,7 +97,7 @@ fun OfficerHomeScreen(
             contentPadding = PaddingValues(16.dp),
             verticalArrangement = Arrangement.spacedBy(12.dp),
         ) {
-            item { WardOutcomesCard(ui) }
+            item { WardOutcomesCard(ui, onOpenFarmerDirectory) }
 
             item {
                 Text(
@@ -120,7 +133,7 @@ fun OfficerHomeScreen(
 }
 
 @Composable
-private fun WardOutcomesCard(ui: OfficerUiState) {
+private fun WardOutcomesCard(ui: OfficerUiState, onOpenFarmerDirectory: () -> Unit) {
     Card(modifier = Modifier.fillMaxWidth()) {
         Column(modifier = Modifier.padding(20.dp)) {
             Text(
@@ -132,12 +145,25 @@ private fun WardOutcomesCard(ui: OfficerUiState) {
             OutcomeRow("Active agents in ward", ui.activeAgentsInWard.toString())
             Spacer(Modifier.height(6.dp))
             OutcomeRow("Agents you've endorsed", ui.endorsedByMeCount.toString())
+            Spacer(Modifier.height(6.dp))
+            // Real, as of KWAP-01 step 4: GET /farms?registeredBy=me, cached in
+            // Room. Counts rows still pending push, because a registration saved
+            // offline is a registration.
+            OutcomeRow("Farmers you've registered", ui.farmersRegisteredByMe.toString())
             Spacer(Modifier.height(12.dp))
-            // Honest: farmer-registration and ward sales totals need a server ward
-            // report (farms/orders are user-scoped, not on this device). No fake
-            // numbers — flagged plainly rather than left to look broken.
+            TextButton(
+                onClick = onOpenFarmerDirectory,
+                contentPadding = PaddingValues(0.dp),
+            ) {
+                Text("See the farmers you registered →")
+            }
+            Spacer(Modifier.height(4.dp))
+            // Narrowed, not deleted. Registration numbers are now real; ward
+            // SALES totals genuinely still need a server ward report, and they
+            // are money — which this surface will never show. Saying so beats a
+            // silent absence, which is what made the old note worth keeping.
             Text(
-                "Farmers registered and ward sales totals are coming — they need a ward report from the server.",
+                "This counts farmers you registered, not everyone in the ward — a ward-wide view needs a report the server doesn't have yet.",
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )

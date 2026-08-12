@@ -57,13 +57,13 @@
     <string name="no_notes">Hakuna maelezo bado</string>
     <string name="add_first_note">Rekodi shughuli, ununuzi, au mauzo yako ya kwanza</string>
 
-    <!-- Biofix card -->
-    <string name="biofix_title">Biofix</string>
-    <string name="biofix_desc">Matibabu ya asili ya udongo inayosaidia mikunde yako kunyonya nitrojeni zaidi. Mizizi mikubwa, maganda bora, mavuno zaidi.</string>
-    <string name="biofix_sachets_needed" formatted="false">Shamba hili linahitaji mfuko %d (gramu %d kila mmoja)</string>
-    <string name="biofix_price">KSh 1,500 kwa mfuko</string>
-    <string name="biofix_learn_more">Jifunze zaidi</string>
-    <string name="biofix_tagline">Sio kamili, bora tu.</string>
+    <!-- Kadi ya Kumea N -->
+    <string name="kumea_n_title">Kumea N</string>
+    <string name="kumea_n_desc">Matibabu ya asili ya udongo inayosaidia mikunde yako kunyonya nitrojeni zaidi. Mizizi mikubwa, maganda bora, mavuno zaidi.</string>
+    <string name="kumea_n_sachets_needed" formatted="false">Shamba hili linahitaji mfuko %d (gramu %d kila mmoja)</string>
+    <string name="kumea_n_price">KSh 1,500 kwa mfuko wa gramu 150</string>
+    <string name="kumea_n_learn_more">Jifunze zaidi</string>
+    <string name="kumea_n_tagline">Sio kamili, bora tu.</string>
 
     <!-- Money summary -->
     <string name="money">Pesa</string>
@@ -166,7 +166,7 @@
     <!-- Build-3: verbs & FarmHome -->
     <string name="verb_add_record">Ongeza kumbukumbu</string>
     <string name="shughuli">Shughuli</string>
-    <string name="biofix_link_row">Biofix ya maharagwe</string>
+    <string name="kumea_n_link_row">Kumea N ya maharagwe</string>
 
     <!-- Build-3: sync felt states -->
     <string name="saved_on_phone">Imehifadhiwa kwenye simu</string>
@@ -188,7 +188,7 @@
     <string name="save">Hifadhi</string>
 
     <!-- Build-3: purchase picklist -->
-    <string name="item_biofix">Mfuko wa Biofix</string>
+    <string name="item_kumea_n">Mfuko wa Kumea N</string>
     <string name="item_seed">Mbegu</string>
     <string name="item_fertiliser">Mbolea</string>
     <string name="item_herbicide">Dawa ya magugu</string>

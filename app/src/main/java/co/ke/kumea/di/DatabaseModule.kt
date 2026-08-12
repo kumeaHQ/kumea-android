@@ -81,6 +81,39 @@ object DatabaseModule {
         }
     }
 
+    /**
+     * KWAP-01 step 4 (v11 → v12). Two unrelated changes ride together because
+     * they ship in one release; both are spelled out because both touch data.
+     *
+     * ── farms.farmerName / farmerPhone ──────────────────────────────────────
+     * The register's subject. Nullable TEXT with no default, matching the
+     * server's additive `20260812120000_kwap01_step4_farmer_identity`, so every
+     * existing row reads null — which is honest: nobody recorded a person
+     * against those farms. Written against the exported `11.json` farms table.
+     *
+     * ── notes.costCategory 'BIOFIX' → 'OTHER' ───────────────────────────────
+     * NOT cosmetic, and not optional. `BIOFIX` was client-first and the server's
+     * CostCategory enum never gained it, so every note carrying it was rejected
+     * with a validation 400 on push and retried for ever (400 is not terminal
+     * client-side). Those rows are still sitting pending on any device that
+     * recorded a Kumea N purchase.
+     *
+     * Removing the enum constant without this UPDATE would be worse than the
+     * bug: Room stores an enum as its name, so a row reading 'BIOFIX' would
+     * throw on deserialisation and take the whole notes query down with it.
+     * Rewriting to 'OTHER' unsticks the queue and loses only a label — the
+     * amount, the note body and the field are all untouched, and the row pushes
+     * on the next cycle. When RB ships a real server value, a later migration
+     * can reclassify; the money was never wrong.
+     */
+    internal val MIGRATION_11_12 = object : Migration(11, 12) {
+        override fun migrate(db: SupportSQLiteDatabase) {
+            db.execSQL("ALTER TABLE `farms` ADD COLUMN `farmerName` TEXT")
+            db.execSQL("ALTER TABLE `farms` ADD COLUMN `farmerPhone` TEXT")
+            db.execSQL("UPDATE `notes` SET `costCategory` = 'OTHER' WHERE `costCategory` = 'BIOFIX'")
+        }
+    }
+
     @Provides
     @Singleton
     fun provideKumeaDatabase(
@@ -90,10 +123,12 @@ object DatabaseModule {
         KumeaDatabase::class.java,
         DATABASE_NAME,
     )
-        // DESTRUCTIVE FALLBACK REMOVED (Build-2 T0). Real user data exists on
-        // devices — from v10 on, every schema change ships a written Migration.
-        // A missing migration now crashes on open instead of wiping the farm.
-        .addMigrations(MIGRATION_9_10, MIGRATION_10_11)
+        // DESTRUCTIVE FALLBACK REMOVED (Build-2 T0). From v10 on, every schema
+        // change ships a written Migration; a missing one now crashes on open
+        // instead of wiping the farm. (The three devices in use today are test
+        // handsets — corrected 11 Aug — but this is what protects the first real
+        // farmer a WAO registers, which is what step 4 makes possible.)
+        .addMigrations(MIGRATION_9_10, MIGRATION_10_11, MIGRATION_11_12)
         .build()
 
     @Provides

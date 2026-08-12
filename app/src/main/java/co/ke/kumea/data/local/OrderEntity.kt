@@ -6,7 +6,7 @@ import androidx.room.Index
 import androidx.room.PrimaryKey
 
 /**
- * A Biofix sale record (P1-T3) — the first money path in the distribution
+ * A Kumea N sale record (P1-T3) — the first money path in the distribution
  * layer. An Order belongs to a Farm: in Phase-1a terms "registering a farmer"
  * creates a Farm, so farmerId points at the farm row that IS the farmer record
  * (same ownership chain as Note, one level shallower).

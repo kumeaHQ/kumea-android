@@ -31,10 +31,13 @@ class FarmSyncTest {
         val rows = mutableMapOf<String, FarmEntity>()
         val upserts = mutableListOf<FarmEntity>()
         override fun getAllActive(): Flow<List<FarmEntity>> = flowOf(rows.values.toList())
+        override fun getRegisteredBy(agentId: String): Flow<List<FarmEntity>> =
+            flowOf(rows.values.filter { it.registeredByAgentId == agentId })
         override suspend fun getById(id: String): FarmEntity? = rows[id]
         override suspend fun getAllIds(): List<String> = rows.keys.toList()
         override suspend fun getPendingSync(): List<FarmEntity> = rows.values.filter { it.pendingSync }
         override suspend fun getLatestUpdatedAt(): String? = rows.values.maxOfOrNull { it.updatedAt }
+        override suspend fun getByIds(ids: List<String>): List<FarmEntity> = ids.mapNotNull { rows[it] }
         override suspend fun upsertAll(farms: List<FarmEntity>) {
             farms.forEach { rows[it.id] = it; upserts.add(it) }
         }

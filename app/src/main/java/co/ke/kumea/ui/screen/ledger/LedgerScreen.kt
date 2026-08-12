@@ -210,7 +210,6 @@ private fun CostCategoryCard(lines: List<CostCategoryLine>) {
 /** Display label for a cost category; null is the uncategorised bucket. */
 @Composable
 private fun categoryLabel(category: CostCategory?): String = when (category) {
-    CostCategory.BIOFIX -> stringResource(R.string.item_biofix)
     CostCategory.SEED -> stringResource(R.string.item_seed)
     CostCategory.FERTILISER -> stringResource(R.string.item_fertiliser)
     CostCategory.SPRAY -> stringResource(R.string.category_spray)

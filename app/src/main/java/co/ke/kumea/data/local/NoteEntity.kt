@@ -65,15 +65,23 @@ enum class NoteType {
 
 /**
  * Cost categories for the byCostCategory P&L breakdown (Ticket 2.1). Mirrors the
- * API's CostCategory enum exactly (British spelling). Crosses the wire as the
+ * API's CostCategory enum EXACTLY (British spelling). Crosses the wire as the
  * enum name; null means uncategorised.
  *
- * BIOFIX (Build-3 §5 purchase picklist) is client-first: RB must confirm the
- * server enum accepts it BEFORE this merges, or Biofix purchases will be
- * rejected on push. The picklist's Herbicide card writes the existing SPRAY.
+ * "Exactly" is the whole contract, and a `BIOFIX` value that was never in the
+ * server enum broke it from Build-3 until v12. The server's enum has only ever
+ * been SEED / FERTILISER / LABOUR / SPRAY / TRANSPORT / OTHER — RB never added
+ * the value the client-first picklist assumed — so every Kumea N purchase note
+ * was pushed, rejected with a validation 400, and retried for ever, because 400
+ * is not in the client's terminal set. MIGRATION_11_12 rewrites the stranded
+ * rows to OTHER.
+ *
+ * So: NEVER add a value here that the server does not already accept. The cost
+ * of being early is not a missing label, it is a permanently poisoned sync
+ * queue. The picklist maps Kumea N to OTHER and Herbicide to SPRAY until RB
+ * ships a real value — see [co.ke.kumea.ui.screen.note.PurchaseItem].
  */
 enum class CostCategory {
-    BIOFIX,
     SEED,
     FERTILISER,
     LABOUR,

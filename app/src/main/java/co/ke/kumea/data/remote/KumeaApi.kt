@@ -96,10 +96,26 @@ interface KumeaApi {
     @DELETE("agents/{id}")
     suspend fun deleteAgent(@Path("id") id: String): Response<Unit>
 
+    /**
+     * Two lists behind one route:
+     *
+     *   getFarms()                      → farms I OWN        (every device's sync)
+     *   getFarms(registeredBy = "me")   → farms I REGISTERED (KWAP-01 step 3)
+     *
+     * The second is the officer's directory. It exists because registering a
+     * farmer confers no ownership, so those rows never appear in the first list
+     * — a 201 followed by the row vanishing. `me` is the only value the server
+     * accepts, deliberately: an agent id there would be an authorisation
+     * question dressed up as a filter. Anything else is a 400.
+     *
+     * The caller must be an active extension_officer or village_agent, or the
+     * server answers 403 — terminal, and handled as such.
+     */
     @GET("farms")
     suspend fun getFarms(
         @Query("since") since: String? = null,
         @Query("includeDeleted") includeDeleted: Boolean = false,
+        @Query("registeredBy") registeredBy: String? = null,
     ): List<FarmResponse>
 
     @POST("farms")

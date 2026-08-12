@@ -79,7 +79,7 @@ fun FarmHomeScreen(
     val latestHarvest by viewModel.latestHarvest.collectAsStateWithLifecycle()
 
     val snackbarHostState = remember { SnackbarHostState() }
-    var showBiofixSheet by remember { mutableStateOf(false) }
+    var showKumeaNSheet by remember { mutableStateOf(false) }
 
     LaunchedEffect(farmId) { viewModel.init(farmId) }
     LaunchedEffect(errorMessage) {
@@ -177,9 +177,9 @@ fun FarmHomeScreen(
                         }
                     }
 
-                    // ② Biofix — one link-row; the card content lives behind it.
+                    // ② Kumea N — one link-row; the card content lives behind it.
                     item {
-                        BiofixLinkRow(onOpen = { showBiofixSheet = true })
+                        KumeaNLinkRow(onOpen = { showKumeaNSheet = true })
                     }
 
                     // ③ Money — one line-card; the ledger holds the breakdown.
@@ -232,11 +232,11 @@ fun FarmHomeScreen(
         }
     }
 
-    if (showBiofixSheet) {
-        BiofixSheet(
+    if (showKumeaNSheet) {
+        KumeaNSheet(
             acres = farm?.acres ?: 0.5,
             sachetsNeeded = farm?.acres?.let { maxOf(1, ceil(it).toInt()) } ?: 1,
-            onDismiss = { showBiofixSheet = false },
+            onDismiss = { showKumeaNSheet = false },
         )
     }
 }
@@ -317,9 +317,9 @@ private fun VerbButton(
     }
 }
 
-/** Biofix guidance leaves the feed: one quiet link-row opens the sheet. */
+/** Kumea N guidance leaves the feed: one quiet link-row opens the sheet. */
 @Composable
-private fun BiofixLinkRow(onOpen: () -> Unit) {
+private fun KumeaNLinkRow(onOpen: () -> Unit) {
     PaperCard(onClick = onOpen, modifier = Modifier.fillMaxWidth()) {
         Row(
             modifier = Modifier.padding(horizontal = 16.dp, vertical = 14.dp),
@@ -333,7 +333,7 @@ private fun BiofixLinkRow(onOpen: () -> Unit) {
             )
             Spacer(Modifier.width(12.dp))
             Text(
-                stringResource(R.string.biofix_link_row),
+                stringResource(R.string.kumea_n_link_row),
                 style = MaterialTheme.typography.bodyMedium,
                 color = Ink,
                 modifier = Modifier.weight(1f),
@@ -343,10 +343,10 @@ private fun BiofixLinkRow(onOpen: () -> Unit) {
     }
 }
 
-/** The old Biofix card content, now behind the link-row. Rate per canon §4. */
+/** The old Kumea N card content, now behind the link-row. Rate per canon §4. */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-private fun BiofixSheet(acres: Double, sachetsNeeded: Int, onDismiss: () -> Unit) {
+private fun KumeaNSheet(acres: Double, sachetsNeeded: Int, onDismiss: () -> Unit) {
     ModalBottomSheet(
         onDismissRequest = onDismiss,
         containerColor = MaterialTheme.colorScheme.surfaceVariant,
@@ -364,18 +364,18 @@ private fun BiofixSheet(acres: Double, sachetsNeeded: Int, onDismiss: () -> Unit
                 )
                 Spacer(Modifier.width(10.dp))
                 Text(
-                    stringResource(R.string.biofix_title),
+                    stringResource(R.string.kumea_n_title),
                     style = MaterialTheme.typography.titleMedium,
                     color = DeepLeaf,
                 )
             }
-            Text(stringResource(R.string.biofix_desc), style = MaterialTheme.typography.bodyMedium)
+            Text(stringResource(R.string.kumea_n_desc), style = MaterialTheme.typography.bodyMedium)
             Text(
-                stringResource(R.string.biofix_sachets_needed, sachetsNeeded, 150),
+                stringResource(R.string.kumea_n_sachets_needed, sachetsNeeded, 150),
                 style = MaterialTheme.typography.bodyMedium,
                 fontWeight = FontWeight.SemiBold,
             )
-            Text(stringResource(R.string.biofix_price), style = MaterialTheme.typography.bodyMedium)
+            Text(stringResource(R.string.kumea_n_price), style = MaterialTheme.typography.bodyMedium)
         }
     }
 }
@@ -499,8 +499,11 @@ private fun NoteRow(note: NoteEntity) {
     }
 }
 
+// Kumea N writes OTHER until the server's enum has a value for it, so a Kumea N
+// purchase shows the generic icon here and reads "Other" in the ledger
+// breakdown. That is the honest cost of not inventing a wire value — the amount
+// is right, only the label is coarse. Give it back when RB ships the enum.
 private fun categoryIcon(category: CostCategory?): Int = when (category) {
-    CostCategory.BIOFIX -> R.drawable.ic_sachet
     CostCategory.SEED -> R.drawable.ic_seed_bag
     CostCategory.FERTILISER -> R.drawable.ic_fertiliser
     CostCategory.SPRAY -> R.drawable.ic_jerrycan

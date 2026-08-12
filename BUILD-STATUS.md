@@ -1,5 +1,5 @@
 # BUILD-STATUS.md
-> Updated: 11 August 2026 — kumea-android section reconciled against the code.
+> Updated: 12 August 2026 — KWAP-01 step 4 (officer register + directory) shipped.
 > Tracks what is built, verified, and pending across all three repos.
 >
 > **The kumea-android tables below were six weeks stale (26 Jun) and said the
@@ -66,9 +66,9 @@
 |---|---|---|
 | Soil Paper palette (theme-wide) | ✅ Built | Zero raw hex outside `ui/theme/Color.kt`; `#2E7D32` gone; one gold `#C79A2A` |
 | Logo: splash stacked lockup, launcher mark, Welcome horizontal lockup | ✅ Built | Mark generated from kumea-mark.svg; Poppins SemiBold bundled (lockups only) |
-| FarmHome: 3-verb bar, Biofix link-row+sheet, money line-card, Shughuli feed | ✅ Built | FAB + SELL/MONEY toolbar deleted |
+| FarmHome: 3-verb bar, Kumea N link-row+sheet, money line-card, Shughuli feed | ✅ Built | FAB + SELL/MONEY toolbar deleted |
 | Season Record card (gold rule, icon rows, teal stamp) | ✅ Built | "Imesawazishwa · HH:MM" / "Kwenye simu"; APK grep confirms zero "Imethibitishwa" |
-| Purchase picklist (7 icon cards → costCategory) | ✅ Built | **BIOFIX enum is client-first — RB must confirm/add server-side BEFORE ship** (Herbicide→SPRAY) |
+| Purchase picklist (7 icon cards → costCategory) | ✅ Built | ~~BIOFIX client-first~~ **FIXED 12 Aug.** RB never added it, so every Kumea N purchase note 400'd and retried for ever. The card is now "Kumea N sachet" writing `OTHER`; `MIGRATION_11_12` rewrites stranded rows. `CostCategoryContractTest` pins the enum to the server's |
 | Harvest wizard restyle (5 gold dots, unit icons, mini-record review) | ✅ Built | Flow untouched: UNIT→QUANTITY→SPLIT→REPLANT→REVIEW, atomic save |
 | Sync felt-states (save-beat chip, on-phone/synced row badges) | ✅ Built | "Saving…" removed from APK strings |
 | Swahili strings | ✅ Built | All new keys in values + values-sw |
@@ -78,21 +78,21 @@
 ### Sprint 1 (Notes → Field → Ledger) — verified against code, 11 Aug 2026
 
 All three persona surfaces exist and are routed from `LandingScreen` via
-`PersonaRepository`. There are **10 screen packages** under `ui/screen/`
-(agent, auth, distribution, farm, field, home, ledger, note, officer, order)
-across 108 Kotlin files.
+`PersonaRepository`. There are **9 screen packages** under `ui/screen/`
+(agent, auth, farm, field, home, ledger, note, officer, order) across 112 Kotlin
+files. `distribution/` is gone — the demo harness was removed 12 Aug.
 
 | Component | Status | Notes |
 |---|---|---|
 | **Farmer surface** | ✅ Built | `FarmList` → `FarmHome` → fields, notes, planting date, harvest wizard, per-farm ledger. Missing: order-history list, crop guidance |
 | **Village Agent surface** | ✅ Built | `VillageAgentHomeScreen` + ViewModel. Record sale → `OrderCreate`; earnings → `Ledger`. ⚠️ farmer registration is wired but **wrong** — see KWAP-01 row |
-| **Officer surface** | ✅ Built | `OfficerHomeScreen` (201 lines) + ViewModel (150). Ward outcomes card, agent endorsement list, honest gap notice at `OfficerHomeScreen.kt:136`. Zero commercial content — enforced in the type system (`Persona.allowsEarnings`, no `commissionRuleId` on `AgentEntity`) |
+| **Officer surface** | ✅ Built | `OfficerHomeScreen` + ViewModel: ward outcomes, agent endorsement, and since 12 Aug a real "Farmers you've registered" count plus `RegisterFarmerScreen` / `FarmerDirectoryScreen`. Zero commercial content — enforced in the type system (`Persona.allowsEarnings`, no `commissionRuleId` on `AgentEntity`) |
 | Notes capture | ✅ Built | `NoteCreateScreen` + `NoteRepository`, per farm/field |
 | Field detail (planting dates, harvest) | ✅ Built | `PlantingDateScreen`, `HarvestWizardScreen` (Build-2), `harvests` table via `MIGRATION_9_10` |
 | Ledger / earnings view | ✅ Built | `LedgerScreen` + `LedgerRepository` / `CommissionRepository` |
 | Offline order recording | ✅ Built | `OrderCreateScreen` + `OrderRepository : SyncableRepository` |
 | Agent registration flow | Not built | Agents are still provisioned server-side. The distribution demo used to mint agent rows on the device; that was removed (commit `55a0906`) |
-| Officer farmer directory | Not built | **Blocked on the server ward report** — KWAP-01 step 3. This is what the gap notice on the officer home is waiting for |
+| Officer farmer directory | ✅ Built | `FarmerDirectoryScreen` reads `GET /farms?registeredBy=me` into Room. **"Farmers I registered", not ward-scoped** — the ward column and the ward-wide view were deferred (KWAP-STEP2-DECISIONS §4), so the home card still says so |
 
 ### ⚠️ KWAP-01 — farmer registration by officers and agents
 
@@ -106,16 +106,18 @@ attached that farm to the registrar's own account.
 | Step | Status |
 |---|---|
 | 1. `farmerUserId` + `registeredByAgentId` + `MIGRATION_10_11` (client) | ✅ Done — commit `ad9177c`, DB at v11, `11.json` exported |
-| 2. API on-behalf creation, role + ward guarded | Not started — `kumea-api` |
-| 3. Ward-scoped read endpoint | Not started — `kumea-api` |
-| 4. Officer farmer-create + ward directory | Not started |
-| 5. Agent farmer-create + own roster | Not started |
+| 2. API on-behalf creation, role + ward guarded | ✅ Done — `kumea-api` `238032e`, deployed |
+| 3. `GET /farms?registeredBy=me` | ✅ Done — `kumea-api` `3f48a7f`, deployed. Scope shrank to "farms I registered"; ward view deferred |
+| 4. Officer farmer-create + directory | ✅ Done 12 Aug — `RegisterFarmerScreen` + `FarmerDirectoryScreen`, DB at v12, `farms.farmer_name` / `farmer_phone` server-side |
+| 5. Agent farmer-create + own roster | Not started — **the register screen already works for a village_agent**; only the roster and the nav repoint are left |
 | 6. Bulk paste-a-list intake | Not started — `kwap/KWAP-FARMER-REGISTER.xlsx` is the system of record until then |
 
-**Live mis-attribution, unfixed:** `KumeaNavHost.kt:181` routes the agent home's
-"New farmer" button straight to `Routes.FARM_CREATE`, commented `INTERIM`. Every
-farmer an agent registers today becomes a farm owned by *the agent*. Step 1 added
-the fields but nothing sets them yet. Closed by steps 2 + 5.
+**Live mis-attribution, still unfixed and now a one-line fix:** the agent home's
+"New farmer" button still routes to `Routes.FARM_CREATE`. A farmer an agent
+registers that way becomes a farm owned by *the agent*, with no `farmerName` and
+no provenance. `Routes.FARMER_REGISTER` does the right thing and the server
+already permits a `village_agent` to use it — repointing it is step 5, along with
+the agent's own roster.
 
 **Do not set `referrerAgentId` on officer-registered farmers.** It records who
 gets commission, not who typed it in — that is `registeredByAgentId`. The

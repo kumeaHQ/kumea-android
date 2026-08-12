@@ -290,7 +290,7 @@ private fun PurchaseItemCard(
 }
 
 private fun PurchaseItem.labelRes(): Int = when (this) {
-    PurchaseItem.BIOFIX_SACHET -> R.string.item_biofix
+    PurchaseItem.KUMEA_N_SACHET -> R.string.item_kumea_n
     PurchaseItem.SEED -> R.string.item_seed
     PurchaseItem.FERTILISER -> R.string.item_fertiliser
     PurchaseItem.HERBICIDE -> R.string.item_herbicide
@@ -300,7 +300,7 @@ private fun PurchaseItem.labelRes(): Int = when (this) {
 }
 
 private fun PurchaseItem.iconRes(): Int = when (this) {
-    PurchaseItem.BIOFIX_SACHET -> R.drawable.ic_sachet
+    PurchaseItem.KUMEA_N_SACHET -> R.drawable.ic_sachet
     PurchaseItem.SEED -> R.drawable.ic_seed_bag
     PurchaseItem.FERTILISER -> R.drawable.ic_fertiliser
     PurchaseItem.HERBICIDE -> R.drawable.ic_jerrycan

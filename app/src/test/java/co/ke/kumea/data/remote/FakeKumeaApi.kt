@@ -60,7 +60,11 @@ open class FakeKumeaApi : KumeaApi {
     override suspend fun updateAgent(id: String, agent: AgentUpdateRequest): Response<AgentResponse> = nope()
     override suspend fun deleteAgent(id: String): Response<Unit> = nope()
 
-    override suspend fun getFarms(since: String?, includeDeleted: Boolean): List<FarmResponse> = nope()
+    override suspend fun getFarms(
+        since: String?,
+        includeDeleted: Boolean,
+        registeredBy: String?,
+    ): List<FarmResponse> = nope()
     override suspend fun createFarm(farm: FarmCreateRequest): Response<FarmResponse> = nope()
     override suspend fun updateFarm(id: String, farm: FarmUpdateRequest): Response<FarmResponse> = nope()
     override suspend fun deleteFarm(id: String): Response<Unit> = nope()

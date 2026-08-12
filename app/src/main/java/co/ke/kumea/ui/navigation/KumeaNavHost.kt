@@ -10,13 +10,11 @@ import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.rememberNavController
 import androidx.navigation.navArgument
-import co.ke.kumea.BuildConfig
 import co.ke.kumea.ui.screen.auth.OtpEntryScreen
 import co.ke.kumea.ui.screen.auth.PhoneEntryScreen
 import co.ke.kumea.ui.screen.auth.PinEntryScreen
 import co.ke.kumea.ui.screen.auth.PinSetupScreen
 import co.ke.kumea.ui.screen.agent.VillageAgentHomeScreen
-import co.ke.kumea.ui.screen.distribution.DistributionDemoScreen
 import co.ke.kumea.ui.screen.farm.FarmCreateScreen
 import co.ke.kumea.ui.screen.farm.FarmHomeScreen
 import co.ke.kumea.ui.screen.farm.FarmListScreen
@@ -25,7 +23,9 @@ import co.ke.kumea.ui.screen.field.PlantingDateScreen
 import co.ke.kumea.ui.screen.home.LandingScreen
 import co.ke.kumea.ui.screen.ledger.LedgerScreen
 import co.ke.kumea.ui.screen.note.NoteCreateScreen
+import co.ke.kumea.ui.screen.officer.FarmerDirectoryScreen
 import co.ke.kumea.ui.screen.officer.OfficerHomeScreen
+import co.ke.kumea.ui.screen.officer.RegisterFarmerScreen
 import co.ke.kumea.ui.screen.order.OrderCreateScreen
 
 /** Nav-result key: a capture flow saved something; FarmHome plays the beat. */
@@ -42,7 +42,9 @@ object Routes {
     const val OFFICER_HOME = "officer/home"
     const val FARM_CREATE = "farms/create"
     const val FARM_HOME = "farms/{farmId}"
-    const val DISTRIBUTION_DEMO = "distribution/demo"
+    /** KWAP-01 step 4 — the officer's register. Not a farm list; see FarmerDirectoryScreen. */
+    const val FARMER_DIRECTORY = "officer/farmers"
+    const val FARMER_REGISTER = "officer/farmers/register"
     const val NOTE_CREATE = "farms/{farmId}/notes/create"
     const val LEDGER = "farms/{farmId}/ledger"
     const val ORDER_CREATE = "orders/create?farmId={farmId}"
@@ -176,10 +178,13 @@ fun KumeaNavHost(
         composable(Routes.AGENT_HOME) {
             VillageAgentHomeScreen(
                 onRecordSale = { navController.navigate(Routes.orderCreate(null)) },
-                // INTERIM: reuse the proven FarmCreate screen for farmer registration
-                // until AS-1 lands (farmer-as-farm is the Phase-1 model).
+                // STILL INTERIM, and still wrong: a farmer an agent registers
+                // this way becomes a farm the AGENT owns, with no farmerName and
+                // no provenance. RegisterFarmerScreen (step 4) is the fix and
+                // the server already permits a village_agent to use it — but the
+                // agent's own roster is step 5, so this is repointed there, not
+                // here. See CLAUDE.md "Live mis-attribution".
                 onRegisterFarmer = { navController.navigate(Routes.FARM_CREATE) },
-                onOpenDistributionDemo = { navController.navigate(Routes.DISTRIBUTION_DEMO) },
                 onLoggedOut = {
                     navController.navigate(Routes.PHONE_ENTRY) {
                         popUpTo(0) { inclusive = true }
@@ -189,6 +194,8 @@ fun KumeaNavHost(
         }
         composable(Routes.OFFICER_HOME) {
             OfficerHomeScreen(
+                onRegisterFarmer = { navController.navigate(Routes.FARMER_REGISTER) },
+                onOpenFarmerDirectory = { navController.navigate(Routes.FARMER_DIRECTORY) },
                 onLoggedOut = {
                     navController.navigate(Routes.PHONE_ENTRY) {
                         popUpTo(0) { inclusive = true }
@@ -196,15 +203,22 @@ fun KumeaNavHost(
                 },
             )
         }
+        composable(Routes.FARMER_DIRECTORY) {
+            FarmerDirectoryScreen(
+                onBack = { navController.popBackStack() },
+                onRegisterFarmer = { navController.navigate(Routes.FARMER_REGISTER) },
+            )
+        }
+        composable(Routes.FARMER_REGISTER) {
+            RegisterFarmerScreen(
+                onBack = { navController.popBackStack() },
+                // Pop straight back to whichever surface launched it. The
+                // directory is a Room Flow, so the new row is already there.
+                onSaved = { navController.popBackStack() },
+            )
+        }
         composable(Routes.FARM_CREATE) {
             FarmCreateScreen(onBack = { navController.popBackStack() })
-        }
-        // Developer harness — registered in debug builds only; a release build
-        // has no such destination (handoff §2: not reachable by real users).
-        if (BuildConfig.DEBUG) {
-            composable(Routes.DISTRIBUTION_DEMO) {
-                DistributionDemoScreen(onBack = { navController.popBackStack() })
-            }
         }
         composable(
             Routes.ORDER_CREATE,

@@ -10,10 +10,14 @@ import androidx.room.RoomDatabase
  * future version bump MUST ship a Migration (destructive fallback removed).
  * Version 11 (KWAP-01 step 1): farms gains farmerUserId + registeredByAgentId,
  * so a farm can belong to someone other than the account that created it.
+ * Version 12 (KWAP-01 step 4): farms gains farmerName + farmerPhone — the
+ * register's subject, which had no home anywhere in the app; and the notes
+ * costCategory 'BIOFIX' rows are rewritten to 'OTHER', a value the server's
+ * enum actually accepts. See MIGRATION_11_12; both halves are data-visible.
  */
 @Database(
     entities = [AgentEntity::class, FarmEntity::class, FieldEntity::class, HarvestEntity::class, NoteEntity::class, OrderEntity::class, SyncConflictEntity::class],
-    version = 11,
+    version = 12,
     exportSchema = true,
 )
 abstract class KumeaDatabase : RoomDatabase() {
