@@ -48,8 +48,10 @@ app/src/main/java/co/ke/kumea/
   KumeaApplication.kt          # Hilt app + WorkManager config; arms SyncScheduler
   data/
     auth/TokenStore.kt         # DataStore: access_token, refresh_token
-    local/                     # Room entities + DAOs: Agent, Farm, Field, Harvest,
-                               #   Note, Order, SyncConflict + KumeaDatabase (v12)
+    local/                     # Room entities + DAOs: Agent, Farm, FarmCrop, Field,
+                               #   Harvest, KumeaNReceived, Note, Order, SyncConflict
+                               #   + KumeaDatabase (v13)
+    location/LocationCapturer.kt # Platform LocationManager (NOT play-services)
     remote/                    # KumeaApi, AuthRefreshApi, ApiErrors
       dto/                     # 21 request/response DTOs
       interceptor/             # AuthInterceptor, TokenAuthenticator
@@ -76,8 +78,9 @@ app/src/main/java/co/ke/kumea/
     screen/order/              # OrderCreate
 ```
 
-Tests live in `app/src/test/java/co/ke/kumea/` (16 files, 73 tests: sync,
-repository, persona, money, phone, token store, schema/enum contracts). There is
+Tests live in `app/src/test/java/co/ke/kumea/` (19 files, 109 tests: sync,
+repository, persona, money, phone, token store, schema/enum/wire contracts,
+location capture, farm profile). There is
 no `androidTest` source set — which is why `SchemaMigrationTest` guards the
 migration from the JVM instead of with Room's `MigrationTestHelper`.
 
@@ -137,7 +140,7 @@ If you find `catch (Exception) { clearSession() }` anywhere, flag it immediately
 
 ### Room migration discipline — hardest constraint in the project
 
-**The DB is at version 12. Destructive fallback has been permanently removed
+**The DB is at version 13. Destructive fallback has been permanently removed
 (`di/DatabaseModule.kt`). Every schema change from v10 onward MUST ship a
 hand-written `Migration`.**
 
@@ -162,7 +165,7 @@ Rules:
   nullability, indices, FK clauses — or Room throws on open. Diff against the
   exported schema, don't hand-guess.
 - `exportSchema = true`; JSON schemas are committed at `app/schemas/co.ke.kumea.data.local.KumeaDatabase/`
-  (`1.json` … `12.json`). The new `N.json` is part of the change, and
+  (`1.json` … `13.json`). The new `N.json` is part of the change, and
   `SchemaMigrationTest` diffs consecutive versions so a forgotten column fails
   at JVM speed rather than on a farmer's phone.
 - Worked examples, both in `di/DatabaseModule.kt`: `MIGRATION_9_10` (Build-2) —
@@ -173,7 +176,12 @@ Rules:
   **plus a data fix**: `UPDATE notes SET costCategory='OTHER' WHERE
   costCategory='BIOFIX'`. That second statement is not optional — Room stores an
   enum as its name, so dropping `BIOFIX` from the enum without rewriting the rows
-  would throw on read and take the notes query down.
+  would throw on read and take the notes query down. `MIGRATION_12_13` (KWAP-03)
+  is the largest so far — 9 `farms` columns, `fields.trialRole`, 3 `harvests`
+  columns, two new tables — **plus a row rewrite**: existing harvests recorded in
+  `kg` and `gorogoro` get their canonical kilograms, while ones recorded in
+  `bags` are deliberately left at 0 with `conversionSource = 'unknown'`, because
+  a bag is 50 or 90 kg and a guess there would be indistinguishable from data.
 
 ### Sync conflict resolution
 
@@ -339,6 +347,47 @@ missing label.
 `FarmRepository` also gained the 403-terminal branch `AgentRepository` already
 had — the on-behalf role and ward rejections are 403 precisely so it exists.
 
+## TICKET-KWAP-03 — Farmer page (13 Aug, built)
+
+Spec: `~/Desktop/Kumea-Claude/TICKET-KWAP-03-farmer-page.md`, with all eight
+⚠️VERIFY items resolved in `VERIFY-RESULTS-KWAP-03.md`. **Client shipped
+(`d42a785`); the server half is written and NOT deployed** — branch
+`kwap-03/farm-profile` in `kumea-api`, commit `a457197`.
+
+**Deploy the server before building a release APK.** Nine `farms` columns, three
+`harvests` columns and `farm_crops` are device-only until it lands;
+`FarmRepository.applyServerFarms` and `HarvestRepository.pullSince` carry them
+forward from the local row so a pull cannot erase a baseline nobody can re-ask
+for, and both spots say where the `local?.x` becomes `server.x`.
+
+Four decisions taken during the build, each recorded where it applies:
+
+1. **No `county`.** §4.1 wanted one beside `ward`, but nothing on either side
+   holds a county — `AgentEntity` has `region` + `ward`, and `region` is free
+   text that is county-shaped in the agent code (`EO-NANDI-041`) while
+   `KUMEA-REGIONS-CANONICAL.md` defines it as one of seven regions. Needs a real
+   county field on `Agent` first.
+2. **`ward` IS now stored, reversing KWAP-01.** That deferral was about a *typed*
+   copy; this one is stamped from the registering agent and there is no ward
+   input anywhere. Grouping ~395 farms through the join would make every analysis
+   depend on a roster that may have been edited since.
+3. **Platform `LocationManager`, not `FusedLocationProviderClient`.** Fused means
+   a new `play-services-location` dependency, which this file bars without a
+   ticket. The platform API needs none and does everything §5.1 specifies.
+4. **Yields are centi-`Long`, not §4.4's `Double`.** They are summed across ~395
+   farms into one headline figure, and the neighbouring quantity columns in the
+   same table are already centi.
+
+`kumea_n_received` is fully written including push/pull, and **not bound** into
+`Set<SyncableRepository>` — a push at a route that does not exist is a 404, and
+404 is not terminal here. Uncomment the `@Binds @IntoSet` in `RepositoryModule`
+the moment the server patch is deployed.
+
+**The ledger now has no entry point.** Removing the farmer page's money card
+(§5.4) removed the only navigation into `Routes.LEDGER`. The route and
+`LedgerScreen` are intact and deliberately left registered; giving the agent
+surface its own link is agent-home work.
+
 ### Still open
 
 - **Agent home "New farmer" still mis-attributes.** `KumeaNavHost` routes it to
@@ -349,10 +398,9 @@ had — the on-behalf role and ward rejections are 403 precisely so it exists.
   than picked. Numbers are in `PRICE-MATRIX-LOCKED.md` (revised 12 Aug).
   `SkuOptions` still holds the superseded 14 Jun codes and says so in a comment.
   Land before the first real sale.
-- **Crop capture is still a single string.** The grouped multi-select with an
-  "interested in growing" state (a sales signal nothing else captures) needs a
-  column that holds a set; `fields.crop_type` holds one. `domain/model/Crop.kt`
-  already carries the group structure it will need.
+- ~~**Crop capture is still a single string.**~~ **Done (KWAP-03).** `farm_crops`
+  holds the set, `CropMultiSelect` cycles growing → interested, and
+  `farms.cropType` stays as the list-card denorm sourced from the selection.
 - **Profile screen** — display-only, per the 11 Aug decisions. `AgentEntity` has
   no name field, so it can still only show `EO-NANDI-041`, not Sila Serem.
 
