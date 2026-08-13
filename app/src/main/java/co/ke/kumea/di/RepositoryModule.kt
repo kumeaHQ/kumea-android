@@ -4,6 +4,7 @@ import co.ke.kumea.data.repository.AgentRepository
 import co.ke.kumea.data.repository.FarmRepository
 import co.ke.kumea.data.repository.FieldRepository
 import co.ke.kumea.data.repository.HarvestRepository
+import co.ke.kumea.data.repository.KumeaNReceivedRepository
 import co.ke.kumea.data.repository.NoteRepository
 import co.ke.kumea.data.repository.OrderRepository
 import co.ke.kumea.data.sync.SyncableRepository
@@ -18,8 +19,9 @@ import dagger.multibindings.IntoSet
  *
  * Each repository that implements SyncableRepository is bound into a
  * Set<SyncableRepository> that SyncWorker injects. Declaration order is
- * agent → farm → field → note → order so the Set iteration order matches the FK
- * dependency order when iterating (LinkedHashSet preserves declaration order).
+ * agent → farm → field → harvest → note → order → kumeaNReceived, so the Set's
+ * iteration order matches the FK dependency order (LinkedHashSet preserves
+ * declaration order).
  * Agent leads because Farm.referrerAgentId attributes to an Agent, so the agent
  * must reach the server before a farmer registered with it as referrer; Order
  * trails because Order.farmerId reads from Farm and Order.agentCode resolves to
@@ -64,24 +66,22 @@ abstract class RepositoryModule {
     @IntoSet
     abstract fun bindOrderSyncable(repo: OrderRepository): SyncableRepository
 
-    // ── DELIBERATELY NOT BOUND YET: KumeaNReceivedRepository ────────────────
+    // KWAP-03 §7 — the Kumea N handover shim. Bound once the `kumea-n-received`
+    // routes were live; before that it would have pushed at a 404, which is not
+    // terminal here and would have parked a row at the head of the offline
+    // queue for ever.
     //
-    // It implements SyncableRepository and its push/pull are written, but the
-    // `kumea-n-received` routes ship in the KWAP-03 kumea-api patch and are not
-    // deployed. Binding it now would push at a route that answers 404 — and 404
-    // is not terminal in any repository here, so the row would sit at the head
-    // of the offline queue and be re-sent on every sync cycle for ever.
+    // Declared last, after order, and that placement is only cosmetic: it needs
+    // Farm to exist server-side (KumeaNReceived.farmId → Farm), and what
+    // actually guarantees that is the 404-on-missing-farm the service returns
+    // plus the row staying pending, not this line's position.
     //
-    // That failure has already happened three times on this codebase from three
-    // different directions: an unwhitelisted DTO key, a client-invented enum
-    // value, and a field named differently from the server's. All three were a
-    // client that knew something the server did not. This would be the fourth.
-    //
-    // WHEN THE SERVER PATCH IS DEPLOYED, uncomment. It belongs after farm —
-    // KumeaNReceived.farmId → Farm — and the FK guard, not this order, is what
-    // makes that correct.
-    //
-    // @Binds
-    // @IntoSet
-    // abstract fun bindKumeaNReceivedSyncable(repo: KumeaNReceivedRepository): SyncableRepository
+    // ITS pullSince() RUNS ON EVERY DEVICE, whatever persona is signed in —
+    // SyncWorker iterates this whole set in one try block, so a repository that
+    // throws takes the entire cycle down with it. That is exactly why the
+    // server's GET is scoped by farm visibility rather than gated on role: a
+    // farmer-persona handset must get 200 and an empty list here, not a 403.
+    @Binds
+    @IntoSet
+    abstract fun bindKumeaNReceivedSyncable(repo: KumeaNReceivedRepository): SyncableRepository
 }

@@ -19,19 +19,14 @@ import javax.inject.Singleton
 /**
  * "This farmer received Kumea N" — the interim shim (KWAP-03 §7).
  *
- * ⚠️ IMPLEMENTS `SyncableRepository` BUT IS NOT BOUND INTO THE SET YET. The
- * server routes ship in the KWAP-03 kumea-api patch and are not deployed.
- * Pushing at a route that does not exist is a 404, and only 403 and 409 are
- * terminal here — a 404 would leave the row at the head of the offline queue,
- * re-sent every cycle for ever. That is the same failure this project has now
- * had three times, and binding this one line early is all it would take for a
- * fourth. Add the `@Binds @IntoSet` in `di/RepositoryModule.kt` when the deploy
- * lands; the code below is ready for it.
+ * Bound into `Set<SyncableRepository>` and syncing, as of the KWAP-03 server
+ * deploy. Its `pullSince()` therefore runs on EVERY device on every cycle,
+ * whatever persona is signed in, which is why the server's GET is scoped by farm
+ * visibility rather than gated on role — see the note on [pullSince].
  *
- * Until then the records are local, which is enough for what they are for: Zone
- * 1 of the farm page, so a farmer can see what they were given, and a structured
- * row that the KWAP-02 backfill can turn into a `stock_distributions` entry with
- * a script rather than an excavation.
+ * What the rows are for: Zone 1 of the farm page, so a farmer can see what they
+ * were given, and a structured record the KWAP-02 backfill can turn into a
+ * `stock_distributions` entry with a script rather than an excavation.
  */
 @Singleton
 class KumeaNReceivedRepository @Inject constructor(
@@ -155,6 +150,17 @@ class KumeaNReceivedRepository @Inject constructor(
         return report.build()
     }
 
+    /**
+     * THIS RUNS ON EVERY DEVICE. `SyncWorker` iterates the whole
+     * `Set<SyncableRepository>` inside one try block, so anything thrown here
+     * aborts that entire cycle — every later repository skipped, three retries,
+     * then a sync-failure notification in front of the user.
+     *
+     * `getKumeaNReceived` returns a bare `List<T>` rather than `Response<T>`, so
+     * any non-2xx throws. The server's GET is scoped by farm visibility instead
+     * of gated on role precisely so a farmer-persona handset — which has nothing
+     * to fetch here — gets 200 and an empty list rather than a 403.
+     */
     override suspend fun pullSince(): Int {
         val server = api.getKumeaNReceived(since = dao.getLatestUpdatedAt(), includeDeleted = true)
         if (server.isEmpty()) return 0

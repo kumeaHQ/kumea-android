@@ -50,12 +50,30 @@ import co.ke.kumea.util.Money
  * earnings surface. It is reached solely via the village_agent route; an
  * extension_officer never navigates here, so the earnings construct is absent
  * from the officer's view hierarchy entirely.
+ *
+ * ── THE LEDGER LIVES HERE NOW (KWAP-03 follow-up) ───────────────────────────
+ *
+ * KWAP-03 §5.4 removed the money line-card from the farmer's farm page, and
+ * that card's "Full breakdown →" was the ONLY navigation into `Routes.LEDGER`.
+ * The screen and route were left intact deliberately — the ticket says the
+ * commercial surface stays because it belongs to the agent persona — but for
+ * one commit nothing reached them. Tapping a sale now opens the ledger for the
+ * farm that sale was attributed to.
+ *
+ * NO `if (persona.allowsEarnings)` GUARD, and that is the point rather than an
+ * omission. This whole screen is already unreachable for an officer: the
+ * Landing dispatcher routes EXTENSION_OFFICER to the officer home and nothing
+ * else navigates here. Wrapping the link in a runtime predicate would imply an
+ * officer might arrive on this screen and be stopped by a check — which is the
+ * weaker guarantee the type-system boundary in `Persona` exists to avoid, and
+ * it is how a structural fact quietly degrades into a flag someone can flip.
  */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun VillageAgentHomeScreen(
     onRecordSale: () -> Unit,
     onRegisterFarmer: () -> Unit,
+    onOpenLedger: (String) -> Unit,
     onLoggedOut: () -> Unit,
     viewModel: VillageAgentHomeViewModel = hiltViewModel(),
 ) {
@@ -123,7 +141,9 @@ fun VillageAgentHomeScreen(
                         )
                     }
                 } else {
-                    items(sales, key = { it.id }) { order -> SaleRow(order) }
+                    items(sales, key = { it.id }) { order ->
+                        SaleRow(order, onOpenLedger = { onOpenLedger(order.farmerId) })
+                    }
                 }
             }
         }
@@ -192,8 +212,8 @@ private fun EarningsBody(surface: EarningsSurface) {
 }
 
 @Composable
-private fun SaleRow(order: OrderEntity) {
-    Card(modifier = Modifier.fillMaxWidth()) {
+private fun SaleRow(order: OrderEntity, onOpenLedger: () -> Unit) {
+    Card(onClick = onOpenLedger, modifier = Modifier.fillMaxWidth()) {
         Row(
             modifier = Modifier
                 .padding(16.dp)

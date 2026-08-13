@@ -194,6 +194,11 @@ fun KumeaNavHost(
         }
         composable(Routes.AGENT_HOME) {
             VillageAgentHomeScreen(
+                // KWAP-03 follow-up: the ledger's entry point, restored on the
+                // agent surface after §5.4 removed the farmer page's money card.
+                // Per-farm, because the ledger is — a sale knows which farm it
+                // was attributed to. The farmer surface stays money-free.
+                onOpenLedger = { farmId -> navController.navigate(Routes.ledger(farmId)) },
                 onRecordSale = { navController.navigate(Routes.orderCreate(null)) },
                 // STILL INTERIM, and still wrong: a farmer an agent registers
                 // this way becomes a farm the AGENT owns, with no farmerName and

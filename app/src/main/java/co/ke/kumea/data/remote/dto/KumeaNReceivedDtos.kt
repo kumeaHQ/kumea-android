@@ -5,15 +5,11 @@ import kotlinx.serialization.Serializable
 /**
  * The "Kumea N received" wire contract (KWAP-03 §7).
  *
- * ⚠️ THE SERVER DOES NOT HAVE THIS ROUTE YET. It ships in the KWAP-03 kumea-api
- * patch, which is written but not deployed. Until it is, `KumeaNReceivedRepository`
- * is NOT bound into the `Set<SyncableRepository>` — see the note in
- * `di/RepositoryModule.kt`. A push against a missing route is a 404, and 404 is
- * not terminal client-side, so binding this early would put a row at the head of
- * the offline queue and re-send it every cycle for ever. Exactly the failure
- * this project has already had three times, arrived at from a new direction.
- *
- * EVERY FIELD HERE MUST EXIST ON THE SERVER'S DTO before that binding is added.
+ * EVERY FIELD HERE MUST EXIST ON THE SERVER'S `CreateKumeaNReceivedDto`. The API
+ * runs `ValidationPipe({ forbidNonWhitelisted: true })`, so an unknown key is a
+ * 400 — and 400 is retryable in `pushPending()`, which makes one stray field a
+ * row parked at the head of the offline queue for ever. This project has shipped
+ * that bug three times already, from three different directions.
  *
  * WHAT IS DELIBERATELY ABSENT: `agentId`, `referrerAgentId`, `unitPrice`, any
  * money at all. This is a research distribution to a farmer who was GIVEN the

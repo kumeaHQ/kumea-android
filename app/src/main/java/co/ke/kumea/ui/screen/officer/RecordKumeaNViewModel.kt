@@ -132,12 +132,20 @@ class RecordKumeaNViewModel @Inject constructor(
                     occurredAt = Clock.System.now().toString(),
                     recordedByAgentId = agentId,
                 )
-                // NO pushPending() here, unlike RegisterFarmerViewModel. The
-                // server routes ship in the KWAP-03 kumea-api patch and are not
-                // deployed, so this repository is not bound into the sync set
-                // yet — see di/RepositoryModule.kt. The row is saved locally and
-                // shows in Zone 1 immediately; it syncs on the first cycle after
-                // the binding is enabled.
+                // Best-effort push, exactly like RegisterFarmerViewModel.save():
+                // the row is already in Room, so a failure here is a sync delay
+                // and never a lost handover. Not surfaced as a message — the
+                // record appears in Zone 1 the moment we pop back, carrying its
+                // own SyncBadge, which says the same thing attached to the row
+                // it is about and stays true after a snackbar would have gone.
+                try {
+                    repository.pushPending()
+                } catch (e: CancellationException) {
+                    throw e
+                } catch (e: Exception) {
+                    Log.w(TAG, "handover push deferred — row stays pending", e)
+                }
+
                 _uiState.update { it.copy(isSaving = false) }
                 onSaved()
             } catch (e: CancellationException) {

@@ -179,11 +179,15 @@ interface KumeaApi {
 
     // ---- Kumea N received (KWAP-03 §7) ----
     //
-    // ⚠️ NOT DEPLOYED YET. These routes ship in the KWAP-03 kumea-api patch.
-    // Declaring them here is inert — Retrofit builds the call lazily — but
-    // CALLING them before the deploy is a 404, and 404 is retryable client-side.
-    // `KumeaNReceivedRepository` is therefore not bound into the sync set until
-    // the server side is live; see di/RepositoryModule.kt.
+    // The interim handover record, live since the KWAP-03 server patch.
+    //
+    // NOTE THE RETURN TYPES. createKumeaNReceived and delete return Response<T>
+    // so the repository can branch on the status code; getKumeaNReceived returns
+    // a bare List<T>, so a non-2xx THROWS. That is deliberate for a pull — there
+    // is no partial answer to "what has this device not seen yet" — but it means
+    // the server's GET must never refuse a caller who simply has nothing to
+    // fetch, or every sync cycle on that device dies here. It is scoped by farm
+    // visibility rather than gated on role for exactly that reason.
 
     @GET("kumea-n-received")
     suspend fun getKumeaNReceived(
