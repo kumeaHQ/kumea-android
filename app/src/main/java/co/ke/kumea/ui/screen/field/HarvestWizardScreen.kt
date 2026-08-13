@@ -45,6 +45,7 @@ import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import co.ke.kumea.R
 import co.ke.kumea.data.local.HarvestUnits
+import co.ke.kumea.ui.common.BAG_SIZES_CENTI
 import co.ke.kumea.data.local.ReplantIntent
 import co.ke.kumea.ui.common.PaperCard
 import co.ke.kumea.ui.theme.DeepLeaf
@@ -193,9 +194,39 @@ private fun UnitStep(viewModel: HarvestWizardViewModel, state: HarvestWizardStat
     UnitCard(stringResource(R.string.unit_bags), HarvestUnits.BAGS, R.drawable.ic_sack, viewModel, state)
     UnitCard(stringResource(R.string.unit_kg), HarvestUnits.KG, R.drawable.ic_scale, viewModel, state)
     UnitCard(stringResource(R.string.unit_gorogoro), HarvestUnits.GOROGORO, R.drawable.ic_tin, viewModel, state)
+
+    // ONE EXTRA TAP THAT SAVES THE ENTIRE DATASET (KWAP-03 §4.4).
+    //
+    // Asked here rather than as its own wizard step because it is part of
+    // choosing the unit — "bags, and what size?" is one question a farmer
+    // answers in one breath — and because a sixth gold dot for a question only
+    // one of the three units asks would make the wizard look longer than it is.
+    //
+    // It is REQUIRED, not optional: without it "5 bags" cannot be turned into
+    // kilograms, and a harvest that cannot be turned into kilograms cannot be
+    // divided by acres, compared against the baseline, or added to any other
+    // farm's. A bag is 50 or 90 kg and no default is right for both.
+    if (state.unit == HarvestUnits.BAGS) {
+        Spacer(Modifier.height(4.dp))
+        Text(
+            stringResource(R.string.bag_size_question),
+            style = MaterialTheme.typography.titleMedium,
+            color = DeepLeaf,
+        )
+        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            BAG_SIZES_CENTI.forEach { centi ->
+                FilterChip(
+                    selected = state.bagSizeCenti == centi,
+                    onClick = { viewModel.onBagSizeSelected(centi) },
+                    label = { Text(stringResource(R.string.bag_size_kg, (centi / 100).toInt())) },
+                )
+            }
+        }
+    }
+
     Button(
         onClick = viewModel::stepNext,
-        enabled = state.unit != null,
+        enabled = state.unitStepComplete,
         shape = KumeaButtonShape,
         modifier = Modifier.fillMaxWidth(),
     ) { Text(stringResource(R.string.next)) }

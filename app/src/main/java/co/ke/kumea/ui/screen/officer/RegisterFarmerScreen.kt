@@ -17,7 +17,7 @@ import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material3.Button
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
-import androidx.compose.material3.FilterChip
+import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
@@ -32,7 +32,9 @@ import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
-import co.ke.kumea.domain.model.Crops
+import co.ke.kumea.ui.common.BaselineSection
+import co.ke.kumea.ui.common.LocationCaptureSection
+import co.ke.kumea.ui.screen.farm.CropMultiSelect
 
 /**
  * Register a farmer — the officer's and village agent's create screen
@@ -109,27 +111,16 @@ fun RegisterFarmerScreen(
                 singleLine = true,
             )
 
-            // Single-select, legumes only. Kumea N is a rhizobia inoculant — it
-            // does nothing for maize — so a register entry reading "maize" is a
-            // row the research can't use. The grouped multi-select with an
-            // "interested in growing" state is Batch A and needs a column that
-            // holds a set; `fields.crop_type` holds one string. See Crops.
-            Text("Main legume", style = MaterialTheme.typography.labelLarge)
-            FlowRow(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .selectableGroup(),
-                horizontalArrangement = Arrangement.spacedBy(8.dp),
-                verticalArrangement = Arrangement.spacedBy(4.dp),
-            ) {
-                Crops.LEGUMES.forEach { crop ->
-                    FilterChip(
-                        selected = state.cropType == crop.key,
-                        onClick = { viewModel.onCropChange(crop.key) },
-                        label = { Text(crop.label) },
-                    )
-                }
-            }
+            // The grouped multi-select the old single-select comment here said
+            // was waiting on "a column that holds a set" — `farm_crops` is that
+            // column (KWAP-03 §4.2). Legumes are still first in the list and
+            // still the part Kumea serves; the difference is that the register
+            // can now describe the whole shamba, including the maize, without a
+            // three-chip row implying the product is for it.
+            CropMultiSelect(
+                selection = state.crops,
+                onCropCycle = viewModel::onCropCycle,
+            )
 
             OutlinedTextField(
                 value = state.acres,
@@ -139,6 +130,17 @@ fun RegisterFarmerScreen(
                 modifier = Modifier.fillMaxWidth(),
                 keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
                 singleLine = true,
+            )
+
+            HorizontalDivider()
+            LocationCaptureSection(controller = viewModel.location)
+
+            HorizontalDivider()
+            BaselineSection(
+                input = state.baseline,
+                onQtyChange = viewModel::onBaselineQtyChange,
+                onUnitChange = viewModel::onBaselineUnitChange,
+                onBagSizeChange = viewModel::onBaselineBagSizeChange,
             )
 
             state.error?.let {

@@ -35,6 +35,8 @@ import co.ke.kumea.data.local.CostCategory
 import co.ke.kumea.data.local.FieldEntity
 import co.ke.kumea.data.local.HarvestEntity
 import co.ke.kumea.data.local.HarvestUnits
+import co.ke.kumea.data.local.FarmEntity
+import co.ke.kumea.data.local.KumeaNReceivedEntity
 import co.ke.kumea.data.local.NoteEntity
 import co.ke.kumea.data.local.NoteType
 import co.ke.kumea.data.local.ReplantIntent
@@ -64,7 +66,6 @@ fun FarmHomeScreen(
     farmId: String,
     onBack: () -> Unit,
     onAddNote: () -> Unit,
-    onOpenLedger: () -> Unit,
     onAddPlantingDate: (String) -> Unit,
     onRecordHarvest: (String) -> Unit,
     showSaveBeat: Boolean = false,
@@ -73,6 +74,7 @@ fun FarmHomeScreen(
 ) {
     val ui by viewModel.ui.collectAsStateWithLifecycle()
     val notes by viewModel.notes.collectAsStateWithLifecycle()
+    val kumeaNReceived by viewModel.kumeaNReceived.collectAsStateWithLifecycle()
     val isRefreshing by viewModel.isRefreshing.collectAsStateWithLifecycle()
     val errorMessage by viewModel.errorMessage.collectAsStateWithLifecycle()
     val primaryField by viewModel.primaryField.collectAsStateWithLifecycle()
@@ -145,15 +147,17 @@ fun FarmHomeScreen(
             )
         },
         bottomBar = {
-            // One action system: the three season verbs, always reachable.
-            // FAB and SELL/MONEY toolbar actions are deleted; sales are
-            // recorded through Add record, money through the money line-card.
+            // Add record is the one verb that stays down here: it is the
+            // catch-all for anything that is not a season milestone.
+            //
+            // Planting and harvest MOVED UP into Zone 2 (KWAP-03 §5.1/§5.3).
+            // They are the same two wizards, unchanged — what changed is the
+            // frame. At the bottom of an empty page they read as chores for a
+            // bookkeeper; on the season timeline they read as the two moments
+            // the season is actually made of, which is also exactly what the
+            // impact report is computed from.
             if (field != null) {
-                VerbBar(
-                    onPlanting = { onAddPlantingDate(field.id) },
-                    onHarvest = { onRecordHarvest(field.id) },
-                    onAddRecord = onAddNote,
-                )
+                VerbBar(onAddRecord = onAddNote)
             }
         },
         snackbarHost = { SnackbarHost(snackbarHostState) },
@@ -169,25 +173,51 @@ fun FarmHomeScreen(
                     contentPadding = PaddingValues(horizontal = 20.dp, vertical = 12.dp),
                     verticalArrangement = Arrangement.spacedBy(12.dp),
                 ) {
-                    // ① Season Record — captured facts only, a stage without data
-                    // simply does not appear (partial seasons still get their record).
-                    if (field != null && (field.plantedAt != null || latestHarvest != null)) {
-                        item {
-                            SeasonRecordCard(field = field, harvest = latestHarvest)
-                        }
-                    }
+                    // ── THE FARM PAGE IS A SEASON, NOT A LEDGER (KWAP-03 §5.3) ──
+                    //
+                    // The meat was never missing here, it was buried and facing
+                    // the wrong way: the planting and harvest wizards are the
+                    // two best-designed screens in the product AND exactly the
+                    // two data points the impact report needs, and they sat in a
+                    // verb bar at the bottom of an empty page, framed as chores
+                    // for a farmer who is a passive research participant this
+                    // season rather than a bookkeeper.
 
-                    // ② Kumea N — one link-row; the card content lives behind it.
+                    // ZONE 1 — Your Kumea N. Replaces the sales card.
                     item {
-                        KumeaNLinkRow(onOpen = { showKumeaNSheet = true })
+                        KumeaNZone(
+                            received = kumeaNReceived,
+                            onOpenInfo = { showKumeaNSheet = true },
+                        )
                     }
 
-                    // ③ Money — one line-card; the ledger holds the breakdown.
+                    // ZONE 2 — Your season. A timeline, not an activity log; it
+                    // re-hosts the two existing wizards rather than rebuilding
+                    // them. Same code, correct frame.
                     item {
-                        MoneyLineCard(ui = ui, anyPending = anyPending, onTap = onOpenLedger)
+                        SeasonZone(
+                            farm = farm,
+                            field = field,
+                            harvest = latestHarvest,
+                            received = kumeaNReceived,
+                            hasFieldVisit = notes.isNotEmpty(),
+                            onAddPlanting = { field?.let { onAddPlantingDate(it.id) } },
+                            onAddHarvest = { field?.let { onRecordHarvest(it.id) } },
+                        )
                     }
 
-                    // ④ Shughuli feed.
+                    // ZONE 3 — What Kumea N did. Visibly locked until harvest:
+                    // a locked state motivates, an empty page doesn't.
+                    item {
+                        ImpactZone(hasHarvest = latestHarvest != null)
+                    }
+
+                    // The money line-card and its "Full breakdown →" ledger link
+                    // used to sit here. Removed (§5.4): no money surface on the
+                    // farmer page this season. LedgerScreen still exists and
+                    // still belongs to the agent persona.
+
+                    // ④ Shughuli feed — the detail behind Zone 2's timeline.
                     item {
                         Text(
                             stringResource(R.string.shughuli),
@@ -204,7 +234,10 @@ fun FarmHomeScreen(
                                 contentAlignment = Alignment.Center,
                             ) {
                                 Text(
-                                    stringResource(R.string.add_first_note),
+                                    // Was "Record your first activity, purchase,
+                                    // or sale" — two of those three no longer
+                                    // exist on this page (§5.4).
+                                    stringResource(R.string.no_shughuli_yet),
                                     style = MaterialTheme.typography.bodyMedium,
                                     color = InkMuted,
                                 )
@@ -246,11 +279,7 @@ fun FarmHomeScreen(
  * add record. Leaf Wash tonal, equal thirds — every verb one tap away.
  */
 @Composable
-private fun VerbBar(
-    onPlanting: () -> Unit,
-    onHarvest: () -> Unit,
-    onAddRecord: () -> Unit,
-) {
+private fun VerbBar(onAddRecord: () -> Unit) {
     Surface(color = MaterialTheme.colorScheme.surface) {
         Column {
             HorizontalDivider(color = MaterialTheme.colorScheme.outline)
@@ -260,18 +289,6 @@ private fun VerbBar(
                     .padding(horizontal = 12.dp, vertical = 10.dp),
                 horizontalArrangement = Arrangement.spacedBy(8.dp),
             ) {
-                VerbButton(
-                    label = stringResource(R.string.planting_action),
-                    iconRes = R.drawable.ic_sprout,
-                    onClick = onPlanting,
-                    modifier = Modifier.weight(1f),
-                )
-                VerbButton(
-                    label = stringResource(R.string.harvest_action),
-                    iconRes = R.drawable.ic_sack,
-                    onClick = onHarvest,
-                    modifier = Modifier.weight(1f),
-                )
                 VerbButton(
                     label = stringResource(R.string.verb_add_record),
                     iconRes = R.drawable.ic_record,
@@ -319,29 +336,217 @@ private fun VerbButton(
 
 /** Kumea N guidance leaves the feed: one quiet link-row opens the sheet. */
 @Composable
-private fun KumeaNLinkRow(onOpen: () -> Unit) {
-    PaperCard(onClick = onOpen, modifier = Modifier.fillMaxWidth()) {
-        Row(
-            modifier = Modifier.padding(horizontal = 16.dp, vertical = 14.dp),
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            Icon(
-                painter = painterResource(R.drawable.ic_sachet),
-                contentDescription = null,
-                tint = LeafGreen,
-                modifier = Modifier.size(20.dp),
-            )
-            Spacer(Modifier.width(12.dp))
-            Text(
-                stringResource(R.string.kumea_n_link_row),
-                style = MaterialTheme.typography.bodyMedium,
-                color = Ink,
-                modifier = Modifier.weight(1f),
-            )
-            Text("→", style = MaterialTheme.typography.bodyMedium, color = LeafGreen)
+private fun KumeaNZone(
+    received: List<KumeaNReceivedEntity>,
+    onOpenInfo: () -> Unit,
+) {
+    PaperCard(onClick = onOpenInfo, modifier = Modifier.fillMaxWidth()) {
+        Column(modifier = Modifier.padding(horizontal = 16.dp, vertical = 14.dp)) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Icon(
+                    painter = painterResource(R.drawable.ic_sachet),
+                    contentDescription = null,
+                    tint = LeafGreen,
+                    modifier = Modifier.size(20.dp),
+                )
+                Spacer(Modifier.width(12.dp))
+                Text(
+                    stringResource(R.string.zone_your_kumea_n),
+                    style = MaterialTheme.typography.titleSmall,
+                    color = DeepLeaf,
+                    modifier = Modifier.weight(1f),
+                )
+                Text("→", style = MaterialTheme.typography.bodyMedium, color = LeafGreen)
+            }
+
+            Spacer(Modifier.height(8.dp))
+
+            if (received.isEmpty()) {
+                // NOT A PRICE. This replaced "Biofix for your beans / KSh 1,500
+                // per sachet" — a sales card on the page of a farmer who is
+                // being given the product for free (§5.3, §5.4).
+                Text(
+                    stringResource(R.string.kumea_n_empty),
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = InkMuted,
+                )
+            } else {
+                received.forEach { record ->
+                    Text(
+                        text = stringResource(
+                            R.string.kumea_n_received_line,
+                            record.qty,
+                            record.packSizeG,
+                            record.strainCode,
+                            record.batchNumber,
+                        ),
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = Ink,
+                    )
+                    Text(
+                        text = stringResource(R.string.kumea_n_received_when, shortDate(record.occurredAt)),
+                        style = MaterialTheme.typography.bodySmall,
+                        color = InkMuted,
+                    )
+                    if (record.pendingSync) {
+                        Spacer(Modifier.height(2.dp))
+                        SyncBadge(pending = true)
+                    }
+                    Spacer(Modifier.height(6.dp))
+                }
+            }
         }
     }
 }
+
+/**
+ * ZONE 2 — "Your season" (KWAP-03 §5.3). A timeline, not an activity log.
+ *
+ * Every row is either a fact with a date or an invitation with a button, and
+ * the two are visually different. That distinction is the whole idea: an empty
+ * activity log says "you have not done your homework", where a timeline with two
+ * ticks and three open circles says "here is where your season has got to".
+ *
+ * The planting and harvest wizards are NOT rebuilt here. `onAddPlanting` and
+ * `onAddHarvest` are the same navigation calls the verb bar used to make.
+ */
+@Composable
+private fun SeasonZone(
+    farm: FarmEntity?,
+    field: FieldEntity?,
+    harvest: HarvestEntity?,
+    received: List<KumeaNReceivedEntity>,
+    hasFieldVisit: Boolean,
+    onAddPlanting: () -> Unit,
+    onAddHarvest: () -> Unit,
+) {
+    PaperCard(modifier = Modifier.fillMaxWidth()) {
+        Column(modifier = Modifier.padding(16.dp)) {
+            Text(
+                stringResource(R.string.zone_your_season),
+                style = MaterialTheme.typography.titleSmall,
+                color = DeepLeaf,
+            )
+            Spacer(Modifier.height(12.dp))
+
+            // Registration is always done — the farm exists, so this row is
+            // always a tick. It anchors the timeline with a completed step.
+            TimelineRow(
+                label = stringResource(R.string.season_registered),
+                done = true,
+                detail = farm?.createdAt?.let(::shortDate),
+            )
+            TimelineRow(
+                label = stringResource(R.string.season_kumea_n_received),
+                done = received.isNotEmpty(),
+                detail = received.firstOrNull()?.occurredAt?.let(::shortDate),
+            )
+            TimelineRow(
+                label = stringResource(R.string.season_planted),
+                done = field?.plantedAt != null,
+                detail = field?.plantedAt?.let(::shortDate),
+                actionLabel = if (field != null && field.plantedAt == null) {
+                    stringResource(R.string.season_add)
+                } else null,
+                onAction = onAddPlanting,
+            )
+            // Officer observations arrive as notes; there is no button, because
+            // a farmer cannot record a visit to their own shamba.
+            TimelineRow(
+                label = stringResource(R.string.season_field_visit),
+                done = hasFieldVisit,
+            )
+            TimelineRow(
+                label = stringResource(R.string.season_harvest),
+                done = harvest != null,
+                detail = harvest?.harvestDate?.let(::shortDate),
+                actionLabel = if (field != null && harvest == null) {
+                    stringResource(R.string.season_add)
+                } else null,
+                onAction = onAddHarvest,
+                isLast = true,
+            )
+        }
+    }
+}
+
+@Composable
+private fun TimelineRow(
+    label: String,
+    done: Boolean,
+    detail: String? = null,
+    actionLabel: String? = null,
+    onAction: () -> Unit = {},
+    isLast: Boolean = false,
+) {
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Text(
+            text = if (done) "✓" else "○",
+            style = MaterialTheme.typography.bodyLarge,
+            color = if (done) LeafGreen else InkMuted,
+            modifier = Modifier.width(24.dp),
+        )
+        Text(
+            text = label,
+            style = MaterialTheme.typography.bodyMedium,
+            color = if (done) Ink else InkMuted,
+            modifier = Modifier.weight(1f),
+        )
+        when {
+            detail != null -> Text(
+                text = detail,
+                style = MaterialTheme.typography.bodySmall,
+                color = InkMuted,
+            )
+            actionLabel != null -> TextButton(onClick = onAction) {
+                Text(actionLabel, color = LeafGreen)
+            }
+        }
+    }
+    if (!isLast) Spacer(Modifier.height(10.dp))
+}
+
+/**
+ * ZONE 3 — "What Kumea N did" (KWAP-03 §5.3, §6.3).
+ *
+ * A LOCKED STATE, ON PURPOSE. The results screen is a later ticket — harvest is
+ * months away and there is no data to render — but an absent zone and a locked
+ * one say completely different things. Locked says the app is going to tell you
+ * something, and gives the season a destination; absent says the app has nothing
+ * for you, which is what the page said before this ticket.
+ */
+@Composable
+private fun ImpactZone(hasHarvest: Boolean) {
+    PaperCard(modifier = Modifier.fillMaxWidth()) {
+        Column(modifier = Modifier.padding(16.dp)) {
+            Text(
+                stringResource(R.string.zone_what_kumea_n_did),
+                style = MaterialTheme.typography.titleSmall,
+                color = if (hasHarvest) DeepLeaf else InkMuted,
+            )
+            Spacer(Modifier.height(6.dp))
+            Text(
+                // Both states are placeholders — §6.3 builds the real screen
+                // when there is data. The second exists so a farmer who HAS
+                // harvested is not told to come back after harvesting.
+                stringResource(
+                    if (hasHarvest) R.string.impact_coming_soon else R.string.impact_locked
+                ),
+                style = MaterialTheme.typography.bodyMedium,
+                color = InkMuted,
+            )
+        }
+    }
+}
+
+/** "13 Aug" from a UTC ISO-8601 instant, in EAT. */
+private fun shortDate(iso: String): String = runCatching {
+    val date = Instant.parse(iso).toLocalDateTime(TimeZone.of("Africa/Nairobi")).date
+    "${date.dayOfMonth} ${date.month.name.lowercase().replaceFirstChar { it.uppercase() }.take(3)}"
+}.getOrDefault("")
 
 /** The old Kumea N card content, now behind the link-row. Rate per canon §4. */
 @OptIn(ExperimentalMaterial3Api::class)
@@ -375,80 +580,28 @@ private fun KumeaNSheet(acres: Double, sachetsNeeded: Int, onDismiss: () -> Unit
                 style = MaterialTheme.typography.bodyMedium,
                 fontWeight = FontWeight.SemiBold,
             )
-            Text(stringResource(R.string.kumea_n_price), style = MaterialTheme.typography.bodyMedium)
+            // The price line ("KSh 1,500 per 150 g sachet") was here and is
+            // deleted (§5.4). The acres → sachets guidance above stays: it is
+            // agronomy, and it is useful. The price was the sales pitch, and
+            // this cohort is not being sold anything.
         }
     }
 }
 
-/**
- * Money as one quiet line-card: label + net figure + teal sync dot. Verdict
- * color only after harvest; pre-harvest costs are an investment in Ink, never
- * red. "Full breakdown →" opens the ledger.
+/*
+ * MoneyLineCard USED TO LIVE HERE. Deleted with KWAP-03 §5.4 — "Invested so far
+ * / No transactions yet", the net figure, and the "Full breakdown →" link into
+ * the ledger are all gone from the FARMER's farm page.
+ *
+ * Not a cosmetic trim. There is no commercial spine this season: nothing is sold
+ * through the app, and every sachet in the KWAP cohort is free research product.
+ * A card reading "KES 0 invested" to a farmer who was given the product is worse
+ * than no card — it asks a question the app cannot answer honestly.
+ *
+ * `LedgerScreen`, `OrderCreateScreen` and the rest of the commercial surface are
+ * untouched and still reachable: they belong to the agent persona. What changed
+ * is only which page they appear on.
  */
-@Composable
-private fun MoneyLineCard(ui: FarmHomeUiState, anyPending: Boolean, onTap: () -> Unit) {
-    val hasHarvested = ui.totalInCents > 0L
-    val hasAnyActivity = ui.totalInCents > 0L || ui.totalOutCents > 0L
-    val balance = ui.totalInCents - ui.totalOutCents
-
-    PaperCard(onClick = onTap, modifier = Modifier.fillMaxWidth()) {
-        Row(
-            modifier = Modifier.padding(16.dp).fillMaxWidth(),
-            horizontalArrangement = Arrangement.SpaceBetween,
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            Column {
-                Text(
-                    when {
-                        !hasHarvested -> stringResource(R.string.invested)
-                        balance >= 0 -> stringResource(R.string.profit)
-                        else -> stringResource(R.string.loss)
-                    },
-                    style = MaterialTheme.typography.labelMedium,
-                    color = InkMuted,
-                )
-                if (!hasAnyActivity) {
-                    Text(
-                        stringResource(R.string.no_transactions),
-                        style = MaterialTheme.typography.bodyMedium,
-                        color = InkMuted,
-                    )
-                } else {
-                    val figureColor = when {
-                        !hasHarvested -> Ink
-                        balance >= 0 -> LeafGreen
-                        else -> MaterialTheme.colorScheme.error
-                    }
-                    val figure = when {
-                        !hasHarvested -> Money.formatCents(ui.totalOutCents)
-                        balance >= 0 -> Money.formatCents(balance)
-                        else -> "−" + Money.formatCents(-balance)
-                    }
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        Text(
-                            text = figure,
-                            style = MaterialTheme.typography.titleMedium,
-                            color = figureColor,
-                        )
-                        if (anyPending) {
-                            Spacer(Modifier.width(8.dp))
-                            Box(
-                                modifier = Modifier
-                                    .size(8.dp)
-                                    .background(Teal, CircleShape),
-                            )
-                        }
-                    }
-                }
-            }
-            Text(
-                stringResource(R.string.full_breakdown),
-                style = MaterialTheme.typography.labelMedium,
-                color = LeafGreen,
-            )
-        }
-    }
-}
 
 /** Icon-led feed row: `+` is Leaf (a sale), `−` is Clay (an input — never red). */
 @Composable

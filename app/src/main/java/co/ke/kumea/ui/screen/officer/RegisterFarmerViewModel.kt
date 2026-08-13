@@ -3,9 +3,13 @@ package co.ke.kumea.ui.screen.officer
 import android.util.Log
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import co.ke.kumea.data.location.LocationCapturer
 import co.ke.kumea.data.repository.FarmRepository
 import co.ke.kumea.data.repository.FieldRepository
 import co.ke.kumea.data.repository.PersonaRepository
+import co.ke.kumea.domain.model.BaselineInput
+import co.ke.kumea.domain.model.CropSelection
+import co.ke.kumea.ui.common.LocationCaptureController
 import co.ke.kumea.util.normalizeKenyanPhone
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.CancellationException
@@ -20,8 +24,9 @@ data class RegisterFarmerUiState(
     val farmerName: String = "",
     val farmerPhone: String = "",
     val shambaName: String = "",
-    val cropType: String? = null,
+    val crops: CropSelection = CropSelection(),
     val acres: String = "",
+    val baseline: BaselineInput = BaselineInput(),
     /** Derived from the signed-in agent, shown read-only. Never an input. */
     val ward: String? = null,
     val myAgentId: String? = null,
@@ -49,19 +54,37 @@ data class RegisterFarmerUiState(
  *
  * WHY THE WARD IS SHOWN AND NOT ASKED. A registration's ward is the registrar's
  * ward; the officer cannot express another one, so there is nothing to validate
- * and nothing to get wrong. Derive, don't check — and don't store either: it is
- * recoverable through `registeredByAgentId` → `AgentEntity.ward`, so a copy on
- * the farm could only ever disagree with its source.
+ * and nothing to get wrong. Derive, don't check.
+ *
+ * It IS now stored (KWAP-03 §4.1) — a reversal of the note that used to sit
+ * here, and worth stating plainly rather than quietly editing. The old argument
+ * was that a stored copy could disagree with its source. That is true of a TYPED
+ * copy; a stamped one can only be out of date, and traceably so. What changed is
+ * the requirement: the research needs to group ~395 farms by ward, and doing
+ * that through `registeredByAgentId` → `AgentEntity.ward` means every analysis
+ * depends on an agent roster that may have been edited since. The ward a farm
+ * was registered in is a historical fact about the registration, not a live
+ * property of the agent.
  */
 @HiltViewModel
 class RegisterFarmerViewModel @Inject constructor(
     private val farmRepository: FarmRepository,
     private val fieldRepository: FieldRepository,
     private val personaRepository: PersonaRepository,
+    locationCapturer: LocationCapturer,
 ) : ViewModel() {
 
     private val _uiState = MutableStateFlow(RegisterFarmerUiState())
     val uiState: StateFlow<RegisterFarmerUiState> = _uiState.asStateFlow()
+
+    /**
+     * Same controller as the farmer's own flow, so the two capture identically.
+     * Note the "I am standing at this shamba now" tick defaults to OFF, which
+     * matters most here: an officer registering ten farmers in a day is not
+     * standing on ten shambas, and that is the normal case rather than the edge
+     * one (KWAP-03 §5.1⑤).
+     */
+    val location = LocationCaptureController(locationCapturer, viewModelScope)
 
     init {
         viewModelScope.launch {
@@ -77,9 +100,32 @@ class RegisterFarmerViewModel @Inject constructor(
     fun onShambaNameChange(value: String) = _uiState.update { it.copy(shambaName = value) }
     fun onAcresChange(value: String) = _uiState.update { it.copy(acres = value) }
 
-    /** Tapping the selected crop clears it — a register entry may honestly not know yet. */
-    fun onCropChange(key: String) = _uiState.update {
-        it.copy(cropType = if (it.cropType == key) null else key)
+    /** Cycles nothing → growing → would-like-to-grow → nothing. */
+    fun onCropCycle(crop: String) = _uiState.update { state ->
+        val crops = state.crops
+        val next = when (crop) {
+            in crops.growing -> CropSelection(crops.growing - crop, crops.interested + crop)
+            in crops.interested -> CropSelection(crops.growing, crops.interested - crop)
+            else -> CropSelection(crops.growing + crop, crops.interested - crop)
+        }
+        state.copy(crops = next)
+    }
+
+    fun onBaselineQtyChange(value: String) = _uiState.update {
+        it.copy(baseline = it.baseline.copy(qty = value))
+    }
+
+    fun onBaselineUnitChange(unit: String) = _uiState.update { state ->
+        val next = if (state.baseline.unit == unit) {
+            state.baseline.copy(unit = null, bagSizeCenti = null)
+        } else {
+            state.baseline.copy(unit = unit, bagSizeCenti = null)
+        }
+        state.copy(baseline = next)
+    }
+
+    fun onBaselineBagSizeChange(centi: Long) = _uiState.update {
+        it.copy(baseline = it.baseline.copy(bagSizeCenti = centi))
     }
 
     fun save(onSaved: () -> Unit) {
@@ -139,8 +185,14 @@ class RegisterFarmerViewModel @Inject constructor(
                     // authoritatively, so this is a label, not an identity claim.
                     shambaName = state.effectiveShambaName,
                     registeredByAgentId = state.myAgentId,
-                    cropType = state.cropType,
                     acres = acres.toDoubleOrNull(),
+                    crops = state.crops,
+                    location = location.captured(),
+                    // Stamped from the officer's own record, which is the only
+                    // place it can come from. There is no ward input on this
+                    // screen and there must never be one.
+                    ward = state.ward,
+                    baseline = state.baseline.toBaseline(fallbackCrop = state.crops.primaryGrowing),
                 )
                 // Crop and acreage have no home on the server's Farm — they live
                 // on the Field. Creating one here is what actually carries them
@@ -149,7 +201,7 @@ class RegisterFarmerViewModel @Inject constructor(
                     farmId = farmId,
                     name = state.effectiveShambaName,
                     acres = acres.ifBlank { "0" },
-                    cropType = state.cropType,
+                    cropType = state.crops.primaryGrowing,
                 )
 
                 // Best-effort push, exactly like OfficerHomeViewModel.endorse():

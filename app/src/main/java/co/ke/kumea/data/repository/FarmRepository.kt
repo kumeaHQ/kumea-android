@@ -1,5 +1,8 @@
 package co.ke.kumea.data.repository
 
+import co.ke.kumea.data.local.CropStatus
+import co.ke.kumea.data.local.FarmCropDao
+import co.ke.kumea.data.local.FarmCropEntity
 import co.ke.kumea.data.local.FarmDao
 import co.ke.kumea.data.local.FarmEntity
 import co.ke.kumea.data.local.NoteDao
@@ -12,6 +15,9 @@ import co.ke.kumea.data.remote.parseErrorCode
 import co.ke.kumea.data.remote.dto.FarmCreateRequest
 import co.ke.kumea.data.remote.dto.FarmResponse
 import co.ke.kumea.data.remote.dto.FarmUpdateRequest
+import co.ke.kumea.data.location.CapturedLocation
+import co.ke.kumea.domain.model.CropSelection
+import co.ke.kumea.domain.model.FarmBaseline
 import kotlinx.coroutines.flow.Flow
 import java.util.UUID
 import javax.inject.Inject
@@ -24,6 +30,7 @@ import co.ke.kumea.data.sync.SyncableRepository
 @Singleton
 class FarmRepository @Inject constructor(
     private val farmDao: FarmDao,
+    private val farmCropDao: FarmCropDao,
     private val syncConflictDao: SyncConflictDao,
     private val api: KumeaApi,
 ) : SyncableRepository {
@@ -40,28 +47,50 @@ class FarmRepository @Inject constructor(
      */
     suspend fun getById(id: String): FarmEntity? = farmDao.getById(id)
 
+    /**
+     * Self-registration: a farmer adding their own shamba.
+     *
+     * [location] replaced the old `locationLat` / `locationLng` / `useGps` trio
+     * (KWAP-03 §5.1②). The trio made an invalid state representable — a `useGps`
+     * of true beside a null latitude, which is exactly the row the sweep found —
+     * and no amount of care at the call site fixes a type that can express a lie.
+     * [CapturedLocation] carries the coordinates and their metadata together or
+     * not at all, so "we have a location" and "here it is" cannot disagree.
+     */
     suspend fun createLocal(
         name: String,
-        cropType: String? = null,
         acres: Double? = null,
-        locationLat: Double? = null,
-        locationLng: Double? = null,
-        useGps: Boolean = false,
+        location: CapturedLocation? = null,
         waterSource: String? = null,
         referrerAgentId: String? = null,
+        farmerName: String? = null,
+        farmerPhone: String? = null,
+        crops: CropSelection = CropSelection(),
+        baseline: FarmBaseline? = null,
     ): String {
         val now = Clock.System.now().toString()
         val id = UUID.randomUUID().toString()
         val farm = FarmEntity(
             id = id,
             name = name,
-            cropType = cropType,
+            // The list card's denorm, taken from the crop set rather than a
+            // separate input, so the card and the profile cannot disagree.
+            cropType = crops.primaryGrowing,
             acres = acres,
-            locationLat = locationLat,
-            locationLng = locationLng,
-            useGps = useGps,
+            locationLat = location?.lat,
+            locationLng = location?.lng,
+            locationAccuracyM = location?.accuracyM,
+            locationSource = location?.source,
+            locationCapturedAt = location?.capturedAt,
+            locationConfirmedAt = location?.confirmedAt,
             waterSource = waterSource,
             referrerAgentId = referrerAgentId,
+            farmerName = farmerName,
+            farmerPhone = farmerPhone,
+            baselineYieldCenti = baseline?.quantityCenti,
+            baselineYieldUnit = baseline?.unit,
+            baselineYieldKgCenti = baseline?.kgCenti,
+            baselineCrop = baseline?.crop,
             createdAt = now,
             updatedAt = now,
             deletedAt = null,
@@ -69,7 +98,21 @@ class FarmRepository @Inject constructor(
             syncAction = SyncAction.CREATE,
         )
         farmDao.upsert(farm)
+        writeCrops(id, crops)
         return id
+    }
+
+    /**
+     * The crop set, replacing whatever was there. Not a sync entity of its own —
+     * these ride on the farm row (KWAP-03 §8), so there is no pendingSync to set.
+     */
+    private suspend fun writeCrops(farmId: String, crops: CropSelection) {
+        if (crops.isEmpty) return
+        farmCropDao.replaceForFarm(
+            farmId,
+            crops.growing.map { FarmCropEntity(farmId, it, CropStatus.GROWING) } +
+                crops.interestedOnly.map { FarmCropEntity(farmId, it, CropStatus.INTERESTED) },
+        )
     }
 
     /**
@@ -104,25 +147,45 @@ class FarmRepository @Inject constructor(
         farmerPhone: String?,
         shambaName: String,
         registeredByAgentId: String?,
-        cropType: String? = null,
         acres: Double? = null,
+        crops: CropSelection = CropSelection(),
+        location: CapturedLocation? = null,
+        /**
+         * ④ STAMPED, NOT TYPED (KWAP-03 §4.1). The caller passes the registering
+         * agent's OWN `AgentEntity.ward` — there is no ward input anywhere in
+         * the app and adding one would reintroduce exactly the disagreement the
+         * column was deferred over in KWAP-01. Derive, don't check: a typed
+         * value can be wrong, stale or spoofed; a copied one can only be
+         * out of date, and it is out of date in a way that is traceable to a
+         * specific agent record.
+         */
+        ward: String? = null,
+        baseline: FarmBaseline? = null,
     ): String {
         val now = Clock.System.now().toString()
         val id = UUID.randomUUID().toString()
         val farm = FarmEntity(
             id = id,
             name = shambaName,
-            cropType = cropType,
+            cropType = crops.primaryGrowing,
             acres = acres,
-            locationLat = null,
-            locationLng = null,
-            useGps = false,
+            locationLat = location?.lat,
+            locationLng = location?.lng,
+            locationAccuracyM = location?.accuracyM,
+            locationSource = location?.source,
+            locationCapturedAt = location?.capturedAt,
+            locationConfirmedAt = location?.confirmedAt,
+            ward = ward,
             waterSource = null,
             referrerAgentId = null,
             farmerUserId = null,
             registeredByAgentId = registeredByAgentId,
             farmerName = farmerName,
             farmerPhone = farmerPhone,
+            baselineYieldCenti = baseline?.quantityCenti,
+            baselineYieldUnit = baseline?.unit,
+            baselineYieldKgCenti = baseline?.kgCenti,
+            baselineCrop = baseline?.crop,
             createdAt = now,
             updatedAt = now,
             deletedAt = null,
@@ -130,6 +193,7 @@ class FarmRepository @Inject constructor(
             syncAction = SyncAction.CREATE,
         )
         farmDao.upsert(farm)
+        writeCrops(id, crops)
         return id
     }
 
@@ -293,6 +357,18 @@ class FarmRepository @Inject constructor(
         // on the Field server-side and useGps is pure UI state, so a naive
         // rebuild nulls all three on every pull — invisibly, since the farmer
         // sees it only when their crop chip empties itself. Carry them forward.
+        //
+        // KWAP-03 ADDS NINE MORE TO THAT LIST, TEMPORARILY. The location
+        // metadata, the stamped ward and the recalled baseline are all
+        // device-only until the matching kumea-api patch is deployed and
+        // `FarmResponse` carries them. Until then they are carried forward here
+        // for exactly the same reason as cropType — a pull that rebuilds the row
+        // from the server would silently erase a baseline nobody can re-ask for.
+        //
+        // WHEN THE SERVER PATCH DEPLOYS, these move from `local?.x` to
+        // `server.x` IN THE SAME COMMIT that adds them to FarmResponse (§8).
+        // Splitting those two is the KWAP-01 §4.2③ bug, which has already
+        // happened once on this exact entity.
         val existing = farmDao.getByIds(serverFarms.map { it.id }).associateBy { it.id }
 
         val localEntities = serverFarms.map { server ->
@@ -305,6 +381,16 @@ class FarmRepository @Inject constructor(
                 locationLat = server.locationLat,
                 locationLng = server.locationLng,
                 useGps = local?.useGps ?: false,
+                // Device-only until the KWAP-03 server patch lands. See above.
+                locationAccuracyM = local?.locationAccuracyM,
+                locationSource = local?.locationSource,
+                locationCapturedAt = local?.locationCapturedAt,
+                locationConfirmedAt = local?.locationConfirmedAt,
+                ward = local?.ward,
+                baselineYieldCenti = local?.baselineYieldCenti,
+                baselineYieldUnit = local?.baselineYieldUnit,
+                baselineYieldKgCenti = local?.baselineYieldKgCenti,
+                baselineCrop = local?.baselineCrop,
                 waterSource = server.waterSource,
                 referrerAgentId = server.referrerAgentId,
                 // KWAP-01 §4.2③: map these or the officer's directory silently

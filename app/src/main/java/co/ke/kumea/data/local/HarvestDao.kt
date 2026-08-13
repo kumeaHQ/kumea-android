@@ -18,6 +18,15 @@ interface HarvestDao {
     @Query("SELECT * FROM harvests WHERE fieldId = :fieldId AND deletedAt IS NULL AND syncAction != 'DELETE' ORDER BY harvestDate DESC")
     fun getActiveByField(fieldId: String): Flow<List<HarvestEntity>>
 
+    /**
+     * By id, INCLUDING soft-deleted rows. Used by `pullSince()` to carry the
+     * canonical-kilogram columns forward — they are device-only until the
+     * KWAP-03 server patch, so a pull that could not see the local row would
+     * zero them.
+     */
+    @Query("SELECT * FROM harvests WHERE id IN (:ids)")
+    suspend fun getByIds(ids: List<String>): List<HarvestEntity>
+
     @Query("SELECT * FROM harvests WHERE pendingSync = 1 ORDER BY updatedAt ASC")
     suspend fun getPendingSync(): List<HarvestEntity>
 

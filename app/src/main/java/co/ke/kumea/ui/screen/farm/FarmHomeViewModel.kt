@@ -6,11 +6,12 @@ import androidx.lifecycle.viewModelScope
 import co.ke.kumea.data.local.FarmEntity
 import co.ke.kumea.data.local.FieldEntity
 import co.ke.kumea.data.local.HarvestEntity
+import co.ke.kumea.data.local.KumeaNReceivedEntity
 import co.ke.kumea.data.local.NoteEntity
-import co.ke.kumea.data.local.NoteType
 import co.ke.kumea.data.repository.FarmRepository
 import co.ke.kumea.data.repository.FieldRepository
 import co.ke.kumea.data.repository.HarvestRepository
+import co.ke.kumea.data.repository.KumeaNReceivedRepository
 import co.ke.kumea.data.repository.NoteRepository
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.CancellationException
@@ -24,10 +25,21 @@ import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import javax.inject.Inject
 
+/**
+ * NO MONEY TOTALS HERE ANY MORE (KWAP-03 §5.4).
+ *
+ * `totalInCents` / `totalOutCents` and the "Invested so far" card they fed are
+ * gone from the farmer's farm page. Two reasons, and the second is the sharper
+ * one: this season carries no commercial spine at all — nothing is sold through
+ * the app — and for a farmer who was GIVEN the product, "KES 0 invested" is
+ * worse than absent. It invites a question with no good answer.
+ *
+ * `LedgerScreen` and `OrderCreateScreen` are untouched. The money surface
+ * belongs to the agent persona and still exists there; what changed is that it
+ * no longer appears on the page a research farmer opens.
+ */
 data class FarmHomeUiState(
     val farm: FarmEntity? = null,
-    val totalInCents: Long = 0L,
-    val totalOutCents: Long = 0L,
     val loading: Boolean = false,
 )
 
@@ -37,6 +49,7 @@ class FarmHomeViewModel @Inject constructor(
     private val fieldRepository: FieldRepository,
     private val harvestRepository: HarvestRepository,
     private val noteRepository: NoteRepository,
+    private val kumeaNReceivedRepository: KumeaNReceivedRepository,
 ) : ViewModel() {
 
     private val _ui = MutableStateFlow(FarmHomeUiState())
@@ -53,6 +66,10 @@ class FarmHomeViewModel @Inject constructor(
 
     private val _latestHarvest = MutableStateFlow<HarvestEntity?>(null)
     val latestHarvest: StateFlow<HarvestEntity?> = _latestHarvest.asStateFlow()
+
+    /** Zone 1: what this farmer actually received (KWAP-03 §7). */
+    private val _kumeaNReceived = MutableStateFlow<List<KumeaNReceivedEntity>>(emptyList())
+    val kumeaNReceived: StateFlow<List<KumeaNReceivedEntity>> = _kumeaNReceived.asStateFlow()
 
     private val _isRefreshing = MutableStateFlow(false)
     val isRefreshing: StateFlow<Boolean> = _isRefreshing.asStateFlow()
@@ -75,8 +92,10 @@ class FarmHomeViewModel @Inject constructor(
         viewModelScope.launch {
             noteRepository.getActiveByFarm(farmId).collect { noteList ->
                 _notes.value = noteList.filter { it.deletedAt == null }
-                computeTotals()
             }
+        }
+        viewModelScope.launch {
+            kumeaNReceivedRepository.getActiveByFarm(farmId).collect { _kumeaNReceived.value = it }
         }
         viewModelScope.launch {
             fieldRepository.getActiveByFarm(farmId).collect { fields ->
@@ -114,19 +133,5 @@ class FarmHomeViewModel @Inject constructor(
 
     fun onErrorShown() {
         _errorMessage.value = null
-    }
-
-    private fun computeTotals() {
-        var totalIn = 0L
-        var totalOut = 0L
-        for (note in _notes.value) {
-            note.amountCents?.let { cents ->
-                when (note.type) {
-                    NoteType.SALE -> totalIn += cents
-                    NoteType.PURCHASE, NoteType.ACTIVITY -> totalOut += cents
-                }
-            }
-        }
-        _ui.update { it.copy(totalInCents = totalIn, totalOutCents = totalOut) }
     }
 }

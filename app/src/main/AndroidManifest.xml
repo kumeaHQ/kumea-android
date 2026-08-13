@@ -10,6 +10,33 @@
 
     <uses-permission android:name="android.permission.REQUEST_IGNORE_BATTERY_OPTIMIZATIONS" />
 
+    <!--
+         Shamba location capture (KWAP-03 §5.1). These were MISSING, and that
+         absence was the root cause of the `useGps = 1, locationLat = null` rows:
+         the create screen offered a "Use my location" button, but an app cannot
+         request a permission it has never declared, so the tap could only ever
+         set a flag. Declared first, requested at the moment of the tap.
+
+         FINE is what a shamba boundary needs — COARSE alone is a few hundred
+         metres, which cannot tell one farm from its neighbour. COARSE is listed
+         too because Android 12+ lets the user grant approximate location only,
+         and a rough fix that says it is rough beats refusing to work at all.
+
+         Foreground only. There is no background location use here and there must
+         not be: capture happens while a human is looking at the screen.
+    -->
+    <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" />
+    <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION" />
+
+    <!--
+         GPS is how a shamba is located, but the app is useful without it (the
+         farm still saves, location simply stays null), so it must not become an
+         install filter on a handset with a weak or absent GPS chip.
+    -->
+    <uses-feature
+        android:name="android.hardware.location.gps"
+        android:required="false" />
+
     <application
         android:name=".KumeaApplication"
         android:allowBackup="true"

@@ -1,5 +1,6 @@
 package co.ke.kumea.data.sync
 
+import co.ke.kumea.data.local.FakeFarmCropDao
 import co.ke.kumea.data.local.FarmDao
 import co.ke.kumea.data.local.FarmEntity
 import co.ke.kumea.data.local.SyncAction
@@ -9,6 +10,7 @@ import co.ke.kumea.data.remote.FakeKumeaApi
 import co.ke.kumea.data.remote.dto.FarmCreateRequest
 import co.ke.kumea.data.remote.dto.FarmResponse
 import co.ke.kumea.data.repository.FarmRepository
+import co.ke.kumea.domain.model.CropSelection
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.flowOf
@@ -102,7 +104,7 @@ class FarmerRegistrationTest {
             ): List<FarmResponse> = listOf(serverFarm("farm-1"))
         }
 
-        FarmRepository(farmDao, RecordingConflictDao(), api).pullSince()
+        FarmRepository(farmDao, FakeFarmCropDao(), RecordingConflictDao(), api).pullSince()
 
         val row = farmDao.rows.getValue("farm-1")
         assertEquals("agent-1", row.registeredByAgentId)
@@ -131,7 +133,7 @@ class FarmerRegistrationTest {
             ): List<FarmResponse> = listOf(serverFarm("farm-1"))
         }
 
-        FarmRepository(farmDao, RecordingConflictDao(), api).pullSince()
+        FarmRepository(farmDao, FakeFarmCropDao(), RecordingConflictDao(), api).pullSince()
 
         val row = farmDao.rows.getValue("farm-1")
         assertEquals("beans", row.cropType)
@@ -154,7 +156,7 @@ class FarmerRegistrationTest {
             }
         }
 
-        val repository = FarmRepository(farmDao, RecordingConflictDao(), api)
+        val repository = FarmRepository(farmDao, FakeFarmCropDao(), RecordingConflictDao(), api)
         assertEquals(1, repository.pullRegisteredByMe())
 
         // `me` is the only value the server accepts — anything else is a 400.
@@ -206,13 +208,13 @@ class FarmerRegistrationTest {
                 return Response.success(serverFarm(farm.id))
             }
         }
-        val repository = FarmRepository(farmDao, RecordingConflictDao(), api)
+        val repository = FarmRepository(farmDao, FakeFarmCropDao(), RecordingConflictDao(), api)
         repository.createLocalForFarmer(
             farmerName = "Sila Serem",
             farmerPhone = "+254712345678",
             shambaName = "Sigona",
             registeredByAgentId = "agent-1",
-            cropType = "beans",
+            crops = CropSelection(growing = setOf("beans")),
             acres = 0.5,
         )
 
@@ -228,7 +230,7 @@ class FarmerRegistrationTest {
     @Test
     fun `a registration sets provenance and never sets the referrer`() = runBlocking {
         val farmDao = FakeFarmDao()
-        val repository = FarmRepository(farmDao, RecordingConflictDao(), FakeKumeaApi())
+        val repository = FarmRepository(farmDao, FakeFarmCropDao(), RecordingConflictDao(), FakeKumeaApi())
 
         val id = repository.createLocalForFarmer(
             farmerName = "Sila Serem",
@@ -253,7 +255,7 @@ class FarmerRegistrationTest {
     @Test
     fun `a saved registration is in the register before it has synced`() = runBlocking {
         val farmDao = FakeFarmDao()
-        val repository = FarmRepository(farmDao, RecordingConflictDao(), FakeKumeaApi())
+        val repository = FarmRepository(farmDao, FakeFarmCropDao(), RecordingConflictDao(), FakeKumeaApi())
 
         repository.createLocalForFarmer(
             farmerName = "Mercy Jepkoech",
@@ -283,7 +285,7 @@ class FarmerRegistrationTest {
                         .toResponseBody("application/json".toMediaType()),
                 )
         }
-        val repository = FarmRepository(farmDao, conflicts, api)
+        val repository = FarmRepository(farmDao, FakeFarmCropDao(), conflicts, api)
         val id = repository.createLocalForFarmer(
             farmerName = "Wrong Ward",
             farmerPhone = null,

@@ -32,9 +32,42 @@ import androidx.room.PrimaryKey
  * which is the model KWAP-01 §2 describes anyway. When a real Farmer/User split
  * arrives with commercial, these two become a backfill source.
  *
- * There is no ward column, deliberately: a registration's ward is derived from
- * [registeredByAgentId] → `AgentEntity.ward`, never typed, so a stored copy
- * could only ever disagree with its source.
+ * WARD IS STAMPED, NOT TYPED (v13, KWAP-03 §4.1). [ward] is copied from the
+ * registering agent's own `AgentEntity.ward` at create time and from nowhere
+ * else — there is no ward input anywhere in the app and there must never be
+ * one. An input can be wrong, stale or spoofed; a derivation cannot. KWAP-01
+ * deferred this column precisely because a *second typed copy* could disagree
+ * with its source; a stamped copy cannot, and the research needs to group ~395
+ * farms by ward without walking the agent roster on every query.
+ *
+ * COUNTY IS ABSENT ON PURPOSE. KWAP-03 §4.1 asked for one alongside [ward], but
+ * nothing on either side of the wire holds a county: `AgentEntity` has `region`
+ * + `ward`, and `region` is free text whose slug becomes the agent code's middle
+ * token ("Nandi County" → `EO-NANDI-041`), which is county-shaped while
+ * KUMEA-REGIONS-CANONICAL.md locks "region" to the seven operational regions.
+ * Stamping that into a column called county would be deriving from a source
+ * that does not mean what the column says. Dropped 13 Aug rather than guessed;
+ * it wants a real county field on Agent first.
+ *
+ * LOCATION IS A FACT WITH AN AGE (v13, KWAP-03 §4.1). [locationLat] != null IS
+ * the truth of "we have a location" — see [useGps] below for what happens when
+ * a boolean is allowed to claim it instead. The four metadata columns exist
+ * because a coordinate on its own cannot be judged: [locationAccuracyM]
+ * separates a 3 m GPS fix from a 20 m network one, [locationCapturedAt] gives
+ * the fix an age (RB's 13 Aug sweep found a 4-day-old fix presented as current),
+ * [locationSource] says which provider produced it, and [locationConfirmedAt] is
+ * set ONLY when a human explicitly tapped "I am standing at this shamba now".
+ * An officer registering ten farmers in a day is not standing on ten shambas,
+ * so captured and confirmed are genuinely different facts and the difference is
+ * what a later "farms needing location confirmed" worklist reads.
+ *
+ * BASELINE IS THE COUNTERFACTUAL (v13, KWAP-03 §4.1, decision 1). Last season's
+ * yield, recalled at registration, is the only comparison most of these farms
+ * will ever have — the split-plot control ([FieldEntity.trialRole]) covers a
+ * subset. It is recall-based and confounded by rainfall, and it still cannot be
+ * retrofitted in December, which is why an optional, skippable question ships
+ * with registration this month. [baselineYieldKgCenti] is the canonical figure;
+ * qty + unit are kept as stated so a wrong conversion stays re-derivable.
  *
  * [cropType], [acres] and [useGps] are DEVICE-ONLY — the server's Farm carries
  * none of them (crop and acreage live on the Field; useGps is pure UI state).
@@ -51,7 +84,41 @@ data class FarmEntity(
     val acres: Double? = null,
     val locationLat: Double?,
     val locationLng: Double?,
+    /**
+     * RETIRED (v13, KWAP-03 §4.1). This is the column that lied: the create
+     * screen wrote `useGps = 1` on a tap and captured nothing, so the database
+     * asserted a location for farms that had none (`useGps=1, lat=null`) — and
+     * the root cause was that the location permissions were never declared in
+     * the manifest, so the app could not have captured a fix even if it tried.
+     *
+     * Nothing writes it and nothing reads it any more. It is still here because
+     * dropping a column in Room means recreating the table, which is a real risk
+     * for no benefit; it goes in a later consolidation migration. NOT NULL with
+     * a false default, so it stays harmless while it waits.
+     */
+    @Deprecated(
+        "Location truth is locationLat != null. Never write this; drop in a later consolidation.",
+        level = DeprecationLevel.WARNING,
+    )
     val useGps: Boolean = false,
+    /** Metres, as the provider reported it. Null when there is no fix at all. */
+    val locationAccuracyM: Float? = null,
+    /** [LocationSource] value — which provider produced the fix. */
+    val locationSource: String? = null,
+    /** UTC ISO-8601. When the fix was taken; a fix has an age. */
+    val locationCapturedAt: String? = null,
+    /** UTC ISO-8601. Set ONLY on an explicit "I am standing at this shamba now". */
+    val locationConfirmedAt: String? = null,
+    /** Stamped from the registering agent's `AgentEntity.ward`. Never typed. */
+    val ward: String? = null,
+    /** Last season's yield AS STATED — hundredths of [baselineYieldUnit]. */
+    val baselineYieldCenti: Long? = null,
+    /** `bags` | `kg` | `gorogoro` — the harvest wizard's vocabulary, verbatim. */
+    val baselineYieldUnit: String? = null,
+    /** Canonical kilograms × 100. The only figure the impact report reads. */
+    val baselineYieldKgCenti: Long? = null,
+    /** What was grown last season — a [co.ke.kumea.domain.model.Crops] key. */
+    val baselineCrop: String? = null,
     val waterSource: String?,
     val referrerAgentId: String? = null,
     val farmerUserId: String? = null,
@@ -69,4 +136,22 @@ enum class SyncAction {
     CREATE,
     UPDATE,
     DELETE,
+}
+
+/**
+ * Which provider produced a fix (KWAP-03 §4.1). Plain string constants rather
+ * than an enum, for the same reason `HarvestUnits` is: Room stores an enum as
+ * its name, so a value the server has not agreed to becomes a row that throws on
+ * read (the `BIOFIX` lesson, v12). These are device-only today and go on the
+ * wire with the KWAP-03 server patch.
+ */
+object LocationSource {
+    /** A real satellite fix. The only one worth confirming a shamba with. */
+    const val GPS = "gps"
+
+    /** Cell/wifi. Cheap, fast, and typically tens to hundreds of metres out. */
+    const val NETWORK = "network"
+
+    /** Entered by a human rather than measured. Nothing writes this yet. */
+    const val MANUAL = "manual"
 }

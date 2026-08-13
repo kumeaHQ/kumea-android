@@ -47,13 +47,64 @@
     <!-- The PLACE's name, never the farmer's — the person's name lives on their account (Build-1). -->
     <string name="farm_name">Shamba name</string>
     <string name="farm_name_hint">What you call the place — e.g. Sigona</string>
-    <string name="crop_type">What are you growing?</string>
+    <string name="crop_type">What do you grow?</string>
+    <!-- Tapping cycles a chip: nothing → growing → would like to grow. The
+         second state is the sales signal nothing else in the system records. -->
+    <string name="crop_multiselect_hint">Tap once for what you grow. Tap again for what you would like to grow.</string>
+    <string name="crop_growing">Growing</string>
+    <string name="crop_interested">Would like to grow</string>
+
+    <!-- THE PERSON, as opposed to farm_name below, which is the PLACE. Until
+         KWAP-03 the farmer's own flow captured neither. -->
+    <string name="farmer_name">Farmer\'s name</string>
+    <string name="farmer_name_hint">The person who farms here</string>
+    <string name="farmer_phone">Phone number</string>
+    <string name="farmer_phone_hint">07xx xxx xxx</string>
     <string name="farm_size">Size (acres)</string>
     <string name="farm_size_hint">e.g. 0.5</string>
     <string name="water_source">Water Source</string>
     <string name="use_location">Use my location</string>
     <string name="location_set">Location set ✓</string>
     <string name="save_farm">Save Farm</string>
+
+    <!-- Location capture (KWAP-03 §5.1). Plain words, no jargon: "accuracy",
+         "GPS fix" and "coordinates" all mean nothing to most of these farmers,
+         where "how close" and "find your shamba again" do. -->
+    <string name="location_label">Where is this shamba?</string>
+    <string name="location_rationale">So Kumea can find your shamba again.</string>
+    <string name="location_searching">Finding your shamba…</string>
+    <string name="location_searching_wait">Looking for satellites…</string>
+    <!-- The live accuracy IS the progress indicator — ±48 m → ±19 m → ±8 m. -->
+    <string name="location_accuracy">±%1$d m</string>
+    <string name="location_accuracy_unknown">closeness unknown</string>
+    <string name="location_captured_at">taken %1$s</string>
+    <string name="location_vague_warning">This is only a rough position. If you can, step into the open and try again.</string>
+    <!-- Ticking this is what sets locationConfirmedAt, and nothing else does.
+         Unticked by default: an officer registering ten farmers in a day is not
+         standing on ten shambas, and that is the normal case. -->
+    <string name="location_standing_here">I am standing at this shamba now</string>
+    <string name="location_use_this">Use this location</string>
+    <string name="location_retry">Try again</string>
+    <string name="location_skip">Save without location</string>
+    <string name="location_denied">Location not allowed. The shamba will still save.</string>
+    <string name="location_try_again_permission">Allow location</string>
+    <string name="location_blocked">Kumea cannot ask for location again. You can turn it on in Settings.</string>
+    <string name="location_open_settings">Open settings</string>
+    <string name="location_off">Location is switched off on this phone.</string>
+
+    <!-- Baseline (KWAP-03 §4.1). The counterfactual, asked now because it
+         cannot be asked in December: recall of a harvest fourteen months back,
+         after a season of hearing a product would help, is not evidence. -->
+    <string name="baseline_question">What did you harvest here last season?</string>
+    <string name="baseline_optional">If you remember. You can skip this.</string>
+    <string name="baseline_qty">How much</string>
+    <!-- Units are the harvest wizard's own (unit_bags / unit_kg / unit_gorogoro,
+         below) on purpose: the baseline and the harvest it will be compared
+         against must be spoken about in one vocabulary. -->
+    <!-- One tap that makes every bag figure in the dataset comparable. -->
+    <string name="bag_size_question">What size bag?</string>
+    <string name="bag_size_kg">%1$d kg</string>
+    <string name="bag_size_needed">Pick a bag size so this can be compared with your harvest.</string>
 
     <!-- Farm Home -->
     <string name="farm_home_title" formatted="false">%1$s · %2$s · %.1f acre</string>
@@ -66,9 +117,13 @@
     <string name="kumea_n_title">Kumea N</string>
     <string name="kumea_n_desc">A natural soil treatment that helps your legumes fix more nitrogen. Bigger roots, better pods, higher yield.</string>
     <string name="kumea_n_sachets_needed" formatted="false">This shamba needs %d sachet (%d g each)</string>
-    <!-- 150 g farmer price, PRICE-MATRIX-LOCKED 12 Aug. Still a fixed string:
-         price-derived-from-pack-size is Batch B and not in this change. -->
-    <string name="kumea_n_price">KSh 1,500 per 150 g sachet</string>
+    <!-- kumea_n_price ("KSh 1,500 per 150 g sachet") was HERE and is deleted
+         (KWAP-03 §5.4). The acres → sachets guidance above stays; the price does
+         not. This season's cohort is given the product for free, so quoting a
+         price on the farmer's own page is both wrong and, to someone who was
+         handed three sachets, faintly insulting. The number itself is not lost —
+         PRICE-MATRIX-LOCKED.md holds it, and Batch B derives price from pack
+         size for the surfaces where money genuinely belongs. -->
     <string name="kumea_n_learn_more">Learn more</string>
     <string name="kumea_n_tagline">Not perfect, just better.</string>
 
@@ -174,6 +229,37 @@
     <string name="verb_add_record">Add record</string>
     <string name="shughuli">Activity log</string>
     <string name="kumea_n_link_row">Kumea N for your beans</string>
+    <string name="no_shughuli_yet">Nothing recorded here yet.</string>
+
+    <!-- KWAP-03 §5.3: the farm page as a season, in three zones. -->
+    <string name="zone_your_kumea_n">Your Kumea N</string>
+    <!-- The empty state is a promise, not a price. -->
+    <string name="kumea_n_empty">Your agent will bring your Kumea N.</string>
+    <string name="kumea_n_received_line" formatted="false">%1$d × %2$d g · %3$s · batch %4$s</string>
+    <string name="kumea_n_received_when">received %1$s</string>
+
+    <string name="zone_your_season">Your season</string>
+    <string name="season_registered">Registered</string>
+    <string name="season_kumea_n_received">Kumea N received</string>
+    <string name="season_planted">Planted</string>
+    <string name="season_field_visit">Field visit</string>
+    <string name="season_harvest">Harvest</string>
+    <string name="season_add">Add</string>
+
+    <string name="zone_what_kumea_n_did">What Kumea N did</string>
+    <!-- Locked, not absent: a locked state gives the season a destination. -->
+    <string name="impact_locked">Come back after harvest to see your results.</string>
+    <string name="impact_coming_soon">Your results are being worked out.</string>
+
+    <!-- Recording a handover (KWAP-03 §7). Officer/agent surface only. -->
+    <string name="record_kumea_n">Record Kumea N given</string>
+    <string name="kumea_n_strain">Strain</string>
+    <string name="kumea_n_pack_size">Pack size</string>
+    <string name="kumea_n_pack_size_g">%1$d g</string>
+    <string name="kumea_n_batch">Batch number</string>
+    <string name="kumea_n_batch_hint">e.g. 130826-01-S</string>
+    <string name="kumea_n_qty">How many sachets</string>
+    <string name="kumea_n_save">Save</string>
 
     <!-- Build-3: sync felt states. Honest words only — a save is "on phone"
          until the server confirms it; NOTHING here ever says "verified". -->

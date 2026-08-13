@@ -25,6 +25,7 @@ import co.ke.kumea.ui.screen.ledger.LedgerScreen
 import co.ke.kumea.ui.screen.note.NoteCreateScreen
 import co.ke.kumea.ui.screen.officer.FarmerDirectoryScreen
 import co.ke.kumea.ui.screen.officer.OfficerHomeScreen
+import co.ke.kumea.ui.screen.officer.RecordKumeaNScreen
 import co.ke.kumea.ui.screen.officer.RegisterFarmerScreen
 import co.ke.kumea.ui.screen.order.OrderCreateScreen
 
@@ -45,6 +46,13 @@ object Routes {
     /** KWAP-01 step 4 — the officer's register. Not a farm list; see FarmerDirectoryScreen. */
     const val FARMER_DIRECTORY = "officer/farmers"
     const val FARMER_REGISTER = "officer/farmers/register"
+    /**
+     * KWAP-03 §7 — recording a Kumea N handover. Officer/agent surface only:
+     * it is reached from the register, which only an officer or agent can open.
+     * Nothing on the farmer's own farm page navigates here — a farmer does not
+     * record what they were given.
+     */
+    const val RECORD_KUMEA_N = "farms/{farmId}/kumea-n"
     const val NOTE_CREATE = "farms/{farmId}/notes/create"
     const val LEDGER = "farms/{farmId}/ledger"
     const val ORDER_CREATE = "orders/create?farmId={farmId}"
@@ -56,6 +64,7 @@ object Routes {
     fun pinEntry(phone: String) = "pin_entry/${Uri.encode(phone)}"
     fun farmHome(farmId: String) = "farms/${Uri.encode(farmId)}"
     fun noteCreate(farmId: String) = "farms/${Uri.encode(farmId)}/notes/create"
+    fun recordKumeaN(farmId: String) = "farms/${Uri.encode(farmId)}/kumea-n"
     fun ledger(farmId: String) = "farms/${Uri.encode(farmId)}/ledger"
     fun orderCreate(farmId: String?) =
         if (farmId != null) "orders/create?farmId=${Uri.encode(farmId)}" else "orders/create"
@@ -144,7 +153,15 @@ fun KumeaNavHost(
                 farmId = farmId,
                 onBack = { navController.popBackStack() },
                 onAddNote = { navController.navigate(Routes.noteCreate(farmId)) },
-                onOpenLedger = { navController.navigate(Routes.ledger(farmId)) },
+                // onOpenLedger is gone: the money line-card that carried it off
+                // the farmer's farm page is deleted (KWAP-03 §5.4).
+                //
+                // ⚠️ THAT WAS THE LEDGER'S ONLY ENTRY POINT. Routes.LEDGER and
+                // LedgerScreen are deliberately left registered and intact — the
+                // ticket says the commercial surface stays because it belongs to
+                // the agent persona — but nothing navigates to it right now.
+                // Giving the agent surface its own link is the agent-home work,
+                // not this ticket's; flagged rather than quietly deleted.
                 onAddPlantingDate = { fieldId -> navController.navigate(Routes.plantingDate(fieldId)) },
                 onRecordHarvest = { fieldId -> navController.navigate(Routes.harvest(fieldId)) },
                 showSaveBeat = showSaveBeat,
@@ -207,6 +224,7 @@ fun KumeaNavHost(
             FarmerDirectoryScreen(
                 onBack = { navController.popBackStack() },
                 onRegisterFarmer = { navController.navigate(Routes.FARMER_REGISTER) },
+                onRecordKumeaN = { farmId -> navController.navigate(Routes.recordKumeaN(farmId)) },
             )
         }
         composable(Routes.FARMER_REGISTER) {
@@ -214,6 +232,17 @@ fun KumeaNavHost(
                 onBack = { navController.popBackStack() },
                 // Pop straight back to whichever surface launched it. The
                 // directory is a Room Flow, so the new row is already there.
+                onSaved = { navController.popBackStack() },
+            )
+        }
+        composable(
+            Routes.RECORD_KUMEA_N,
+            arguments = listOf(navArgument("farmId") { type = NavType.StringType }),
+        ) {
+            RecordKumeaNScreen(
+                onBack = { navController.popBackStack() },
+                // The directory is a Room Flow, so the handover shows on the
+                // farmer's Zone 1 the moment we pop back.
                 onSaved = { navController.popBackStack() },
             )
         }

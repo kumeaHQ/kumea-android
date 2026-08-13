@@ -2,41 +2,40 @@ package co.ke.kumea.ui.screen.farm
 
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.selection.selectable
 import androidx.compose.foundation.selection.selectableGroup
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
-import androidx.compose.material.icons.filled.LocationOn
 import androidx.compose.material3.*
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
-import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.stringResource
-import androidx.compose.ui.semantics.Role
-import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import co.ke.kumea.R
+import co.ke.kumea.ui.common.BaselineSection
+import co.ke.kumea.ui.common.LocationCaptureSection
 
-private data class CropOption(val key: String, val labelResId: Int)
 private data class WaterOption(val key: String, val labelResId: Int)
 
-private val cropOptions = listOf(
-    CropOption("beans", R.string.crop_beans),
-    CropOption("maize", R.string.crop_maize),
-    CropOption("soya", R.string.crop_soya),
-)
 private val waterOptions = listOf(
     WaterOption("dam", R.string.water_dam),
     WaterOption("rain", R.string.water_rain),
     WaterOption("borehole", R.string.water_borehole),
 )
 
+/**
+ * Self-registration: a farmer adding their own shamba.
+ *
+ * Field order is KWAP-03 §5.2 and it is not arbitrary — the person comes first,
+ * because until this change the farmer's own flow captured no name and no phone
+ * at all while the officer's flow captured both. A farm with no person attached
+ * is not a register entry.
+ */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun FarmCreateScreen(
@@ -65,7 +64,27 @@ fun FarmCreateScreen(
                 .verticalScroll(rememberScrollState()),
             verticalArrangement = Arrangement.spacedBy(16.dp),
         ) {
-            // Farm name
+            // ① The person.
+            OutlinedTextField(
+                value = state.farmerName,
+                onValueChange = viewModel::onFarmerNameChange,
+                label = { Text(stringResource(R.string.farmer_name)) },
+                placeholder = { Text(stringResource(R.string.farmer_name_hint)) },
+                modifier = Modifier.fillMaxWidth(),
+                singleLine = true,
+            )
+
+            OutlinedTextField(
+                value = state.farmerPhone,
+                onValueChange = viewModel::onFarmerPhoneChange,
+                label = { Text(stringResource(R.string.farmer_phone)) },
+                placeholder = { Text(stringResource(R.string.farmer_phone_hint)) },
+                modifier = Modifier.fillMaxWidth(),
+                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Phone),
+                singleLine = true,
+            )
+
+            // ② The place.
             OutlinedTextField(
                 value = state.name,
                 onValueChange = viewModel::onNameChange,
@@ -75,23 +94,12 @@ fun FarmCreateScreen(
                 singleLine = true,
             )
 
-            // Crop picker
-            Text(stringResource(R.string.crop_type), style = MaterialTheme.typography.labelLarge)
-            Row(
-                modifier = Modifier.selectableGroup(),
-                horizontalArrangement = Arrangement.spacedBy(8.dp),
-            ) {
-                cropOptions.forEach { crop ->
-                    val selected = state.cropType == crop.key
-                    FilterChip(
-                        selected = selected,
-                        onClick = { viewModel.onCropChange(crop.key) },
-                        label = { Text(stringResource(crop.labelResId)) },
-                    )
-                }
-            }
+            // ③ What grows on it — and what the farmer would try.
+            CropMultiSelect(
+                selection = state.crops,
+                onCropCycle = viewModel::onCropCycle,
+            )
 
-            // Size in acres
             OutlinedTextField(
                 value = state.acres,
                 onValueChange = viewModel::onAcresChange,
@@ -102,34 +110,32 @@ fun FarmCreateScreen(
                 singleLine = true,
             )
 
-            // Water source taps
             Text(stringResource(R.string.water_source), style = MaterialTheme.typography.labelLarge)
             Row(
                 modifier = Modifier.selectableGroup(),
                 horizontalArrangement = Arrangement.spacedBy(8.dp),
             ) {
                 waterOptions.forEach { water ->
-                    val selected = state.waterSource == water.key
                     FilterChip(
-                        selected = selected,
+                        selected = state.waterSource == water.key,
                         onClick = { viewModel.onWaterSourceChange(water.key) },
                         label = { Text(stringResource(water.labelResId)) },
                     )
                 }
             }
 
-            // Location button (replaces Lat/Lng fields)
-            OutlinedButton(
-                onClick = { viewModel.requestLocation() },
-                modifier = Modifier.fillMaxWidth(),
-            ) {
-                Icon(Icons.Default.LocationOn, contentDescription = null, modifier = Modifier.size(18.dp))
-                Spacer(Modifier.width(8.dp))
-                Text(
-                    if (state.useGps) stringResource(R.string.location_set)
-                    else stringResource(R.string.use_location)
-                )
-            }
+            // ④ Where it is — real coordinates or nothing at all.
+            HorizontalDivider()
+            LocationCaptureSection(controller = viewModel.location)
+
+            // ⑤ The counterfactual. Prompted, skippable, never blocking.
+            HorizontalDivider()
+            BaselineSection(
+                input = state.baseline,
+                onQtyChange = viewModel::onBaselineQtyChange,
+                onUnitChange = viewModel::onBaselineUnitChange,
+                onBagSizeChange = viewModel::onBaselineBagSizeChange,
+            )
 
             state.error?.let {
                 Text(
@@ -157,3 +163,4 @@ fun FarmCreateScreen(
         }
     }
 }
+

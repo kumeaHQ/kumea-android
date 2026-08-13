@@ -1,5 +1,6 @@
 package co.ke.kumea.data.repository
 
+import co.ke.kumea.data.local.ConversionSource
 import co.ke.kumea.data.local.FieldDao
 import co.ke.kumea.data.local.HarvestDao
 import co.ke.kumea.data.local.HarvestEntity
@@ -43,12 +44,23 @@ class HarvestRepository @Inject constructor(
         harvestDate: String,
         quantityCenti: Long,
         unit: String,
+        qtyKgCenti: Long,
+        conversionFactorCenti: Long,
+        conversionSource: String,
         keptCenti: Long?,
         soldCenti: Long?,
         replantIntent: String,
         replantMonth: String?,
     ): String {
         require(quantityCenti > 0) { "quantity must be positive" }
+        // The canonical figure is REQUIRED, not defaulted. Every yield
+        // calculation in the impact report reads qtyKgCenti and only it, so a
+        // harvest that reaches Room with a zero here is a row that silently
+        // contributes nothing to the season's headline number. The wizard
+        // cannot produce one — the UNIT step refuses to advance past bags
+        // without a size — and this refuses to store one.
+        require(qtyKgCenti > 0) { "harvest needs canonical kilograms — see KWAP-03 §4.4" }
+        require(conversionFactorCenti > 0) { "a conversion factor must be recorded, not assumed later" }
         val now = Clock.System.now().toString()
         val id = UUID.randomUUID().toString()
         harvestDao.upsert(
@@ -62,6 +74,9 @@ class HarvestRepository @Inject constructor(
                 soldCenti = soldCenti,
                 replantIntent = replantIntent,
                 replantMonth = replantMonth,
+                qtyKgCenti = qtyKgCenti,
+                conversionFactorCenti = conversionFactorCenti,
+                conversionSource = conversionSource,
                 createdAt = now,
                 updatedAt = now,
                 deletedAt = null,
@@ -95,8 +110,8 @@ class HarvestRepository @Inject constructor(
                             harvestDate = harvest.harvestDate,
                             quantity = Quantity.formatCenti(harvest.quantityCenti),
                             unit = harvest.unit,
-                            kept = harvest.keptCenti?.let(Quantity::formatCenti),
-                            sold = harvest.soldCenti?.let(Quantity::formatCenti),
+                            keptQuantity = harvest.keptCenti?.let(Quantity::formatCenti),
+                            soldQuantity = harvest.soldCenti?.let(Quantity::formatCenti),
                             replantIntent = harvest.replantIntent,
                             replantMonth = harvest.replantMonth,
                         )
@@ -139,21 +154,34 @@ class HarvestRepository @Inject constructor(
         val serverHarvests = api.getHarvests(since = since, includeDeleted = true)
         if (serverHarvests.isEmpty()) return 0
 
+        // The canonical-kilogram columns are device-only until the KWAP-03
+        // server patch deploys and HarvestResponse carries them, so a rebuild
+        // from the server would zero them — and a zeroed qtyKgCenti is a harvest
+        // that contributes nothing to the impact report while looking perfectly
+        // normal on screen. Carried forward, exactly as farms carries its own.
+        // WHEN THE SERVER PATCH LANDS, these move to `server.x` in the same
+        // commit that adds them to HarvestResponse (§8).
+        val existing = harvestDao.getByIds(serverHarvests.map { it.id }).associateBy { it.id }
+
         val localEntities = serverHarvests.mapNotNull { server ->
             // Quantities arrive as decimal strings; an unparseable value is a
             // contract violation — skip the row and let it surface in counts
             // rather than storing a corrupted quantity.
             val quantityCenti = Quantity.parseToCenti(server.quantity) ?: return@mapNotNull null
+            val local = existing[server.id]
             HarvestEntity(
                 id = server.id,
                 fieldId = server.fieldId,
                 harvestDate = server.harvestDate,
                 quantityCenti = quantityCenti,
                 unit = server.unit,
-                keptCenti = server.kept?.let(Quantity::parseToCenti),
-                soldCenti = server.sold?.let(Quantity::parseToCenti),
+                keptCenti = server.keptQuantity?.let(Quantity::parseToCenti),
+                soldCenti = server.soldQuantity?.let(Quantity::parseToCenti),
                 replantIntent = server.replantIntent,
                 replantMonth = server.replantMonth,
+                qtyKgCenti = local?.qtyKgCenti ?: 0,
+                conversionFactorCenti = local?.conversionFactorCenti ?: 0,
+                conversionSource = local?.conversionSource ?: ConversionSource.UNKNOWN,
                 createdAt = server.createdAt,
                 updatedAt = server.updatedAt,
                 deletedAt = server.deletedAt,

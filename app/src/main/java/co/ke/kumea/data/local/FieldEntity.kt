@@ -1,5 +1,6 @@
 package co.ke.kumea.data.local
 
+import androidx.room.ColumnInfo
 import androidx.room.Entity
 import androidx.room.ForeignKey
 import androidx.room.Index
@@ -39,9 +40,43 @@ data class FieldEntity(
     // Nullable — unset until the farmer records it. Default keeps existing
     // constructor call sites source-compatible.
     val plantedAt: String? = null,
+    /**
+     * Split-plot role (KWAP-03 §4.3) — `treated` | `control` | `none`.
+     *
+     * The entire model cost of the research design. Every farm gets a recalled
+     * baseline ([FarmEntity.baselineYieldKgCenti]); a subset — ~2 farms per VBA,
+     * ~120 in all — gets a second Field marked `control`, and that arm is the
+     * only one that controls for rainfall. A good season otherwise looks exactly
+     * like a good product, which is the difference between a result Farm Africa
+     * and KEPHIS can use and an anecdote.
+     *
+     * NOT NULL with a `none` default: a field that was never part of a trial
+     * must say so, not read null and leave "was this a control plot?"
+     * unanswerable at analysis time. Set at distribution, never retrofittable.
+     *
+     * The SQL default is declared here rather than only in the migration, so
+     * Room's expected schema and the ALTER statement cannot drift apart — a
+     * NOT NULL column added without a default cannot be applied to existing
+     * rows at all, and one whose default differs from Room's expectation throws
+     * on open.
+     */
+    @ColumnInfo(defaultValue = TrialRole.NONE)
+    val trialRole: String = TrialRole.NONE,
     val createdAt: String,
     val updatedAt: String,
     val deletedAt: String?,
     val pendingSync: Boolean,
     val syncAction: SyncAction,
 )
+
+/** Split-plot arms. Strings, not an enum — see [LocationSource] for why. */
+object TrialRole {
+    /** Got Kumea N. */
+    const val TREATED = "treated"
+
+    /** Deliberately did not, on the same shamba, in the same season. */
+    const val CONTROL = "control"
+
+    /** Not part of a trial. The default and the common case. */
+    const val NONE = "none"
+}

@@ -16,6 +16,8 @@ import co.ke.kumea.data.remote.dto.FieldUpdateRequest
 import co.ke.kumea.data.remote.dto.HarvestCreateRequest
 import co.ke.kumea.data.remote.dto.HarvestResponse
 import co.ke.kumea.data.remote.dto.HarvestUpdateRequest
+import co.ke.kumea.data.remote.dto.KumeaNReceivedCreateRequest
+import co.ke.kumea.data.remote.dto.KumeaNReceivedResponse
 import co.ke.kumea.data.remote.dto.HealthResponse
 import co.ke.kumea.data.remote.dto.LoginRequest
 import co.ke.kumea.data.remote.dto.LogoutRequest
@@ -78,6 +80,18 @@ open class FakeKumeaApi : KumeaApi {
     override suspend fun createHarvest(harvest: HarvestCreateRequest): Response<HarvestResponse> = nope()
     override suspend fun updateHarvest(id: String, harvest: HarvestUpdateRequest): Response<HarvestResponse> = nope()
     override suspend fun deleteHarvest(id: String): Response<Unit> = nope()
+
+    // KWAP-03 §7. Present so the interface is satisfied; these routes are not
+    // deployed yet and KumeaNReceivedRepository is not bound into the sync set,
+    // so nothing calls them in production either.
+    override suspend fun getKumeaNReceived(
+        since: String?,
+        includeDeleted: Boolean,
+    ): List<KumeaNReceivedResponse> = nope()
+    override suspend fun createKumeaNReceived(
+        record: KumeaNReceivedCreateRequest,
+    ): Response<KumeaNReceivedResponse> = nope()
+    override suspend fun deleteKumeaNReceived(id: String): Response<Unit> = nope()
 
     override suspend fun getNotes(since: String?, includeDeleted: Boolean): List<NoteResponse> = nope()
     override suspend fun createNote(note: NoteCreateRequest): Response<NoteResponse> = nope()

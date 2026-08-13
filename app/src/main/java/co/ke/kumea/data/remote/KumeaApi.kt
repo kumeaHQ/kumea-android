@@ -30,6 +30,8 @@ import co.ke.kumea.data.remote.dto.SendOtpResponse
 import co.ke.kumea.data.remote.dto.HarvestCreateRequest
 import co.ke.kumea.data.remote.dto.HarvestResponse
 import co.ke.kumea.data.remote.dto.HarvestUpdateRequest
+import co.ke.kumea.data.remote.dto.KumeaNReceivedCreateRequest
+import co.ke.kumea.data.remote.dto.KumeaNReceivedResponse
 import co.ke.kumea.data.remote.dto.UserProfile
 import co.ke.kumea.data.remote.dto.VerifyOtpRequest
 import co.ke.kumea.data.remote.dto.VerifyOtpResponse
@@ -174,6 +176,28 @@ interface KumeaApi {
 
     @DELETE("harvests/{id}")
     suspend fun deleteHarvest(@Path("id") id: String): Response<Unit>
+
+    // ---- Kumea N received (KWAP-03 §7) ----
+    //
+    // ⚠️ NOT DEPLOYED YET. These routes ship in the KWAP-03 kumea-api patch.
+    // Declaring them here is inert — Retrofit builds the call lazily — but
+    // CALLING them before the deploy is a 404, and 404 is retryable client-side.
+    // `KumeaNReceivedRepository` is therefore not bound into the sync set until
+    // the server side is live; see di/RepositoryModule.kt.
+
+    @GET("kumea-n-received")
+    suspend fun getKumeaNReceived(
+        @Query("since") since: String? = null,
+        @Query("includeDeleted") includeDeleted: Boolean = false,
+    ): List<KumeaNReceivedResponse>
+
+    @POST("kumea-n-received")
+    suspend fun createKumeaNReceived(
+        @Body record: KumeaNReceivedCreateRequest,
+    ): Response<KumeaNReceivedResponse>
+
+    @DELETE("kumea-n-received/{id}")
+    suspend fun deleteKumeaNReceived(@Path("id") id: String): Response<Unit>
 
     // ---- Notes ----
     // Flat /notes resource, identical shape to /fields. fieldId travels in the

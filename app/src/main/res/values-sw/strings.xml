@@ -43,13 +43,48 @@
     <string name="add_farm">Ongeza shamba</string>
     <string name="farm_name">Jina la shamba</string>
     <string name="farm_name_hint">Jina la mahali — mf. Sigona</string>
-    <string name="crop_type">Unapanda nini?</string>
+    <string name="crop_type">Unalima nini?</string>
+    <string name="crop_multiselect_hint">Gusa mara moja kwa unachopanda. Gusa tena kwa ungependa kupanda.</string>
+    <string name="crop_growing">Ninapanda</string>
+    <string name="crop_interested">Ningependa kupanda</string>
+
+    <string name="farmer_name">Jina la mkulima</string>
+    <string name="farmer_name_hint">Mtu anayelima hapa</string>
+    <string name="farmer_phone">Nambari ya simu</string>
+    <string name="farmer_phone_hint">07xx xxx xxx</string>
     <string name="farm_size">Ukubwa (ekari)</string>
     <string name="farm_size_hint">mf. 0.5</string>
     <string name="water_source">Chanzo cha maji</string>
     <string name="use_location">Tumia mahali nilipo</string>
     <string name="location_set">Mahali yamewekwa ✓</string>
     <string name="save_farm">Hifadhi shamba</string>
+
+    <!-- Kunasa mahali (KWAP-03 §5.1) -->
+    <string name="location_label">Shamba hili liko wapi?</string>
+    <string name="location_rationale">Ili Kumea iweze kulipata shamba lako tena.</string>
+    <string name="location_searching">Inatafuta shamba lako…</string>
+    <string name="location_searching_wait">Inatafuta setilaiti…</string>
+    <string name="location_accuracy">±m %1$d</string>
+    <string name="location_accuracy_unknown">ukaribu haujulikani</string>
+    <string name="location_captured_at">imechukuliwa %1$s</string>
+    <string name="location_vague_warning">Hii ni nafasi ya jumla tu. Ikiwezekana, toka nje wazi ujaribu tena.</string>
+    <string name="location_standing_here">Nipo shambani hapa sasa</string>
+    <string name="location_use_this">Tumia mahali haya</string>
+    <string name="location_retry">Jaribu tena</string>
+    <string name="location_skip">Hifadhi bila mahali</string>
+    <string name="location_denied">Mahali hayajaruhusiwa. Shamba litahifadhiwa vivyo hivyo.</string>
+    <string name="location_try_again_permission">Ruhusu mahali</string>
+    <string name="location_blocked">Kumea haiwezi kuomba mahali tena. Unaweza kuwasha katika Mipangilio.</string>
+    <string name="location_open_settings">Fungua mipangilio</string>
+    <string name="location_off">Mahali yamezimwa kwenye simu hii.</string>
+
+    <!-- Msingi (KWAP-03 §4.1) -->
+    <string name="baseline_question">Ulivuna kiasi gani hapa msimu uliopita?</string>
+    <string name="baseline_optional">Kama unakumbuka. Unaweza kuruka hili.</string>
+    <string name="baseline_qty">Kiasi gani</string>
+    <string name="bag_size_question">Gunia la ukubwa gani?</string>
+    <string name="bag_size_kg">kilo %1$d</string>
+    <string name="bag_size_needed">Chagua ukubwa wa gunia ili hii ilinganishwe na mavuno yako.</string>
 
     <!-- Farm Home -->
     <string name="farm_home_title" formatted="false">%1$s · %2$s · ekari %.1f</string>
@@ -61,7 +96,7 @@
     <string name="kumea_n_title">Kumea N</string>
     <string name="kumea_n_desc">Matibabu ya asili ya udongo inayosaidia mikunde yako kunyonya nitrojeni zaidi. Mizizi mikubwa, maganda bora, mavuno zaidi.</string>
     <string name="kumea_n_sachets_needed" formatted="false">Shamba hili linahitaji mfuko %d (gramu %d kila mmoja)</string>
-    <string name="kumea_n_price">KSh 1,500 kwa mfuko wa gramu 150</string>
+    <!-- kumea_n_price imefutwa — KWAP-03 §5.4. Hakuna bei kwenye ukurasa wa mkulima. -->
     <string name="kumea_n_learn_more">Jifunze zaidi</string>
     <string name="kumea_n_tagline">Sio kamili, bora tu.</string>
 
@@ -167,6 +202,35 @@
     <string name="verb_add_record">Ongeza kumbukumbu</string>
     <string name="shughuli">Shughuli</string>
     <string name="kumea_n_link_row">Kumea N ya maharagwe</string>
+    <string name="no_shughuli_yet">Hakuna kilichorekodiwa bado.</string>
+
+    <!-- KWAP-03 §5.3: ukurasa wa shamba kama msimu, kanda tatu. -->
+    <string name="zone_your_kumea_n">Kumea N yako</string>
+    <string name="kumea_n_empty">Wakala wako ataleta Kumea N yako.</string>
+    <string name="kumea_n_received_line" formatted="false">%1$d × g %2$d · %3$s · bechi %4$s</string>
+    <string name="kumea_n_received_when">imepokelewa %1$s</string>
+
+    <string name="zone_your_season">Msimu wako</string>
+    <string name="season_registered">Umesajiliwa</string>
+    <string name="season_kumea_n_received">Kumea N imepokelewa</string>
+    <string name="season_planted">Umepanda</string>
+    <string name="season_field_visit">Ziara shambani</string>
+    <string name="season_harvest">Mavuno</string>
+    <string name="season_add">Ongeza</string>
+
+    <string name="zone_what_kumea_n_did">Kumea N ilifanya nini</string>
+    <string name="impact_locked">Rudi baada ya mavuno kuona matokeo yako.</string>
+    <string name="impact_coming_soon">Matokeo yako yanaandaliwa.</string>
+
+    <!-- Kurekodi ugavi (KWAP-03 §7). Kwa afisa/wakala pekee. -->
+    <string name="record_kumea_n">Rekodi Kumea N iliyotolewa</string>
+    <string name="kumea_n_strain">Aina</string>
+    <string name="kumea_n_pack_size">Ukubwa wa mfuko</string>
+    <string name="kumea_n_pack_size_g">g %1$d</string>
+    <string name="kumea_n_batch">Nambari ya bechi</string>
+    <string name="kumea_n_batch_hint">mf. 130826-01-S</string>
+    <string name="kumea_n_qty">Mifuko mingapi</string>
+    <string name="kumea_n_save">Hifadhi</string>
 
     <!-- Build-3: sync felt states -->
     <string name="saved_on_phone">Imehifadhiwa kwenye simu</string>

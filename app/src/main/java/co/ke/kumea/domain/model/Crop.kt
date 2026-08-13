@@ -79,3 +79,35 @@ object Crops {
     /** Display label for a stored key; falls back to the key so an unknown value still reads. */
     fun label(key: String?): String? = key?.let { byKey[it]?.label ?: it }
 }
+
+/**
+ * What one farm grows, and what it would like to (KWAP-03 §4.2) — the "column
+ * that can hold a set" the comment above has been waiting for.
+ *
+ * TWO SETS, NOT ONE LIST WITH A FLAG, because they answer different questions
+ * and the second one is the commercially interesting answer: `interested` is a
+ * sales signal nothing else in the system records. A farmer growing maize who
+ * would try soybean is a lead; today that farmer is indistinguishable from one
+ * who will never plant a legume.
+ *
+ * The sets are disjoint by construction — you cannot be interested in growing
+ * what you already grow, and a crop in both would produce two `farm_crops` rows
+ * with the same primary key and lose one silently.
+ */
+data class CropSelection(
+    val growing: Set<String> = emptySet(),
+    val interested: Set<String> = emptySet(),
+) {
+    /** Interest in something already grown is not interest; growing wins. */
+    val interestedOnly: Set<String> get() = interested - growing
+
+    val isEmpty: Boolean get() = growing.isEmpty() && interestedOnly.isEmpty()
+
+    /**
+     * The denormalised primary crop for `farms.cropType`, which the farm-list
+     * card reads without a join. Alphabetical rather than arbitrary: a set has
+     * no insertion order, and a stable wrong-ish answer beats one that changes
+     * between reads.
+     */
+    val primaryGrowing: String? get() = growing.minOrNull()
+}

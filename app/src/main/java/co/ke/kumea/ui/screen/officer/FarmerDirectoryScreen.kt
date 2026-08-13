@@ -22,6 +22,7 @@ import androidx.compose.material3.Scaffold
 import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -29,10 +30,12 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import co.ke.kumea.R
 import co.ke.kumea.data.local.FarmEntity
 import co.ke.kumea.domain.model.Crops
 import co.ke.kumea.ui.common.PullToRefresh
@@ -53,6 +56,7 @@ import co.ke.kumea.ui.common.SyncBadge
 fun FarmerDirectoryScreen(
     onBack: () -> Unit,
     onRegisterFarmer: () -> Unit,
+    onRecordKumeaN: (String) -> Unit,
     viewModel: FarmerDirectoryViewModel = hiltViewModel(),
 ) {
     val ui by viewModel.ui.collectAsStateWithLifecycle()
@@ -120,7 +124,9 @@ fun FarmerDirectoryScreen(
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
                         )
                     }
-                    items(ui.farmers, key = { it.id }) { farm -> FarmerRow(farm) }
+                    items(ui.farmers, key = { it.id }) { farm ->
+                        FarmerRow(farm, onRecordKumeaN = { onRecordKumeaN(farm.id) })
+                    }
                 }
             }
         }
@@ -145,47 +151,62 @@ private fun EmptyState(ui: FarmerDirectoryUiState) {
 }
 
 @Composable
-private fun FarmerRow(farm: FarmEntity) {
+private fun FarmerRow(farm: FarmEntity, onRecordKumeaN: () -> Unit) {
     Card(modifier = Modifier.fillMaxWidth()) {
-        Row(
-            modifier = Modifier
-                .padding(16.dp)
-                .fillMaxWidth(),
-            horizontalArrangement = Arrangement.SpaceBetween,
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            Column(modifier = Modifier.weight(1f)) {
-                Text(
-                    // The person first — this is a register, not a farm list.
-                    // Rows created before v12 carry no farmerName; falling back
-                    // to the shamba's name is honest for those, and they are the
-                    // only ones that will ever hit it.
-                    text = farm.farmerName ?: farm.name,
-                    style = MaterialTheme.typography.titleMedium,
-                )
-                farm.farmerPhone?.let {
+        Column {
+            Row(
+                modifier = Modifier
+                    .padding(16.dp)
+                    .fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Column(modifier = Modifier.weight(1f)) {
                     Text(
-                        it,
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        // The person first — this is a register, not a farm list.
+                        // Rows created before v12 carry no farmerName; falling
+                        // back to the shamba's name is honest for those, and they
+                        // are the only ones that will ever hit it.
+                        text = farm.farmerName ?: farm.name,
+                        style = MaterialTheme.typography.titleMedium,
                     )
+                    farm.farmerPhone?.let {
+                        Text(
+                            it,
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                    }
+                    subtitle(farm)?.let {
+                        Text(
+                            it,
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                    }
                 }
-                subtitle(farm)?.let {
+                Column(horizontalAlignment = Alignment.End) {
                     Text(
-                        it,
+                        farm.createdAt.take(10),
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        fontWeight = FontWeight.Normal,
                     )
+                    SyncBadge(pending = farm.pendingSync)
                 }
             }
-            Column(horizontalAlignment = Alignment.End) {
-                Text(
-                    farm.createdAt.take(10),
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    fontWeight = FontWeight.Normal,
-                )
-                SyncBadge(pending = farm.pendingSync)
+
+            // The handover entry point (KWAP-03 §7). It lives on the register
+            // rather than on the farmer's own farm page: recording what was
+            // given is the WAO's act, not the farmer's — and the register is
+            // exactly the list a WAO works down while distributing.
+            //
+            // A text action, not a money button: no price, no total, no order.
+            TextButton(
+                onClick = onRecordKumeaN,
+                modifier = Modifier.padding(start = 8.dp, bottom = 4.dp),
+            ) {
+                Text(stringResource(R.string.record_kumea_n))
             }
         }
     }

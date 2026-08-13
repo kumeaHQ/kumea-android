@@ -3,10 +3,12 @@ package co.ke.kumea.ui.screen.field
 import androidx.lifecycle.SavedStateHandle
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import co.ke.kumea.data.local.ConversionSource
 import co.ke.kumea.data.local.HarvestUnits
 import co.ke.kumea.data.local.ReplantIntent
 import co.ke.kumea.data.repository.HarvestRepository
 import co.ke.kumea.util.Quantity
+import co.ke.kumea.util.YieldConversion
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -27,6 +29,12 @@ data class HarvestWizardState(
     val step: HarvestStep = HarvestStep.UNIT,
     val quantityText: String = "",
     val unit: String? = null,
+    /**
+     * kg-per-bag × 100, asked inline on the UNIT step when the farmer picks
+     * bags. Null for every other unit, which has a standard the table can
+     * supply — see [co.ke.kumea.util.YieldConversion].
+     */
+    val bagSizeCenti: Long? = null,
     val keptText: String = "",
     val soldText: String = "",
     val replantIntent: String? = null,
@@ -34,7 +42,31 @@ data class HarvestWizardState(
     val isSaving: Boolean = false,
     val error: String? = null,
     val saved: Boolean = false,
-)
+) {
+    /** Bags cannot move on until a size is chosen; nothing else asks. */
+    val unitStepComplete: Boolean
+        get() = unit != null && (unit != HarvestUnits.BAGS || bagSizeCenti != null)
+
+    /**
+     * kg-per-unit to apply, and where it came from. Null only when a bag size
+     * is still outstanding — which the UNIT step will not let past.
+     */
+    val conversion: Pair<Long, String>?
+        get() {
+            val unit = unit ?: return null
+            return if (unit == HarvestUnits.BAGS) {
+                bagSizeCenti?.let { it to ConversionSource.USER_STATED }
+            } else {
+                YieldConversion.defaultFactorCenti(unit)?.let {
+                    // kg is an identity conversion — the farmer stated
+                    // kilograms, so nothing was assumed on their behalf.
+                    val source = if (unit == HarvestUnits.KG) ConversionSource.USER_STATED
+                    else ConversionSource.DEFAULT_TABLE
+                    it to source
+                }
+            }
+        }
+}
 
 /**
  * Build-2 T3 state machine. All quantity handling via Quantity (centi Long,
@@ -55,7 +87,13 @@ class HarvestWizardViewModel @Inject constructor(
     val state: StateFlow<HarvestWizardState> = _state.asStateFlow()
 
     fun onQuantityChange(text: String) = _state.update { it.copy(quantityText = text, error = null) }
-    fun onUnitSelected(unit: String) = _state.update { it.copy(unit = unit, error = null) }
+    fun onUnitSelected(unit: String) = _state.update {
+        // Changing away from bags drops the size with it. A 90 kg factor left
+        // sitting behind a gorogoro would be a silent 45× error.
+        it.copy(unit = unit, bagSizeCenti = null, error = null)
+    }
+
+    fun onBagSizeSelected(centi: Long) = _state.update { it.copy(bagSizeCenti = centi, error = null) }
     fun onKeptChange(text: String) = _state.update { it.copy(keptText = text, error = null) }
     fun onSoldChange(text: String) = _state.update { it.copy(soldText = text, error = null) }
 
@@ -85,7 +123,11 @@ class HarvestWizardViewModel @Inject constructor(
         val s = _state.value
         when (s.step) {
             HarvestStep.UNIT -> {
-                if (s.unit == null) return
+                // "What size bag?" is asked here rather than as its own step:
+                // it is part of choosing the unit, and one extra tap in the
+                // farmer's own flow is what makes every bag figure in the
+                // dataset comparable (KWAP-03 §4.4).
+                if (!s.unitStepComplete) return
                 _state.update { it.copy(step = HarvestStep.QUANTITY) }
             }
             HarvestStep.QUANTITY -> {
@@ -148,10 +190,12 @@ class HarvestWizardViewModel @Inject constructor(
         val quantity = Quantity.parseToCenti(s.quantityText)
         val unit = s.unit
         val intent = s.replantIntent
-        if (quantity == null || quantity <= 0 || unit == null || intent == null) {
+        val conversion = s.conversion
+        if (quantity == null || quantity <= 0 || unit == null || intent == null || conversion == null) {
             _state.update { it.copy(error = "Something is missing — go back and check") }
             return
         }
+        val (factorCenti, conversionSource) = conversion
         _state.update { it.copy(isSaving = true, error = null) }
         viewModelScope.launch {
             try {
@@ -160,6 +204,12 @@ class HarvestWizardViewModel @Inject constructor(
                     harvestDate = Clock.System.now().toString(),
                     quantityCenti = quantity,
                     unit = unit,
+                    // Converted HERE, at entry, while the farmer is standing in
+                    // front of us and can still be asked. Not in a script in
+                    // December, when there is nobody left to ask.
+                    qtyKgCenti = YieldConversion.toKgCenti(quantity, factorCenti),
+                    conversionFactorCenti = factorCenti,
+                    conversionSource = conversionSource,
                     keptCenti = s.keptText.takeIf { it.isNotBlank() }?.let(Quantity::parseToCenti),
                     soldCenti = s.soldText.takeIf { it.isNotBlank() }?.let(Quantity::parseToCenti),
                     replantIntent = intent,

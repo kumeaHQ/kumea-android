@@ -1,5 +1,8 @@
 package co.ke.kumea.data.sync
 
+import co.ke.kumea.data.local.FakeFarmCropDao
+import co.ke.kumea.data.local.LocationSource
+import co.ke.kumea.data.location.CapturedLocation
 import co.ke.kumea.data.local.FarmDao
 import co.ke.kumea.data.local.FarmEntity
 import co.ke.kumea.data.local.SyncAction
@@ -60,12 +63,21 @@ class FarmSyncTest {
     @Test
     fun `offline create marks the row pending`() = runBlocking {
         val farmDao = FakeFarmDao()
-        val repository = FarmRepository(farmDao, RecordingConflictDao(), FakeKumeaApi())
+        val repository = FarmRepository(farmDao, FakeFarmCropDao(), RecordingConflictDao(), FakeKumeaApi())
 
         repository.createLocal(
             name = "Test Farm",
-            locationLat = 0.0,
-            locationLng = 0.0,
+            // Coordinates now arrive as a CapturedLocation — five facts that
+            // exist together or not at all — rather than two loose doubles
+            // beside a boolean that could contradict them (KWAP-03 §5.1②).
+            location = CapturedLocation(
+                lat = 0.0,
+                lng = 0.0,
+                accuracyM = 8f,
+                source = LocationSource.GPS,
+                capturedAt = "2026-08-13T10:43:00Z",
+                confirmedAt = null,
+            ),
             waterSource = "Rain",
         )
 
@@ -86,9 +98,9 @@ class FarmSyncTest {
                         .toResponseBody("application/json".toMediaType()),
                 )
         }
-        val repository = FarmRepository(farmDao, conflicts, api)
+        val repository = FarmRepository(farmDao, FakeFarmCropDao(), conflicts, api)
         val id = repository.createLocal(
-            name = "Demo Farmer", locationLat = null, locationLng = null,
+            name = "Demo Farmer", location = null,
             waterSource = null, referrerAgentId = "agent-not-synced",
         )
 
