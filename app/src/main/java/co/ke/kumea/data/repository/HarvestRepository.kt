@@ -5,13 +5,13 @@ import co.ke.kumea.data.local.FieldDao
 import co.ke.kumea.data.local.HarvestDao
 import co.ke.kumea.data.local.HarvestEntity
 import co.ke.kumea.data.local.SyncAction
-import co.ke.kumea.data.local.SyncConflictDao
-import co.ke.kumea.data.local.SyncConflictEntity
 import co.ke.kumea.data.remote.KumeaApi
 import co.ke.kumea.data.remote.dto.HarvestCreateRequest
 import co.ke.kumea.data.remote.dto.HarvestUpdateRequest
+import co.ke.kumea.data.sync.PushDisposition
 import co.ke.kumea.data.sync.PushReport
 import co.ke.kumea.data.sync.PushReportBuilder
+import co.ke.kumea.data.sync.SyncRejectionRecorder
 import co.ke.kumea.data.sync.SyncableRepository
 import co.ke.kumea.util.Quantity
 import kotlinx.coroutines.flow.Flow
@@ -32,7 +32,7 @@ import javax.inject.Singleton
 class HarvestRepository @Inject constructor(
     private val harvestDao: HarvestDao,
     private val fieldDao: FieldDao,
-    private val syncConflictDao: SyncConflictDao,
+    private val rejections: SyncRejectionRecorder,
     private val api: KumeaApi,
 ) : SyncableRepository {
 
@@ -124,11 +124,8 @@ class HarvestRepository @Inject constructor(
                     if (response.isSuccessful) {
                         harvestDao.markSynced(harvest.id, response.body()!!.updatedAt)
                         report.succeeded()
-                    } else if (response.code() == 409) {
-                        recordConflict(harvest, response.errorBody()?.string() ?: "{}", "create_409")
-                        harvestDao.upsert(harvest.copy(pendingSync = false))
-                        report.failed("409")
                     } else {
+                        applyFailure(harvest, response.code(), response.errorBody()?.string(), "create")
                         report.failed(response.code().toString())
                     }
                 }
@@ -155,17 +152,8 @@ class HarvestRepository @Inject constructor(
                     if (response.isSuccessful) {
                         harvestDao.markSynced(harvest.id, response.body()!!.updatedAt)
                         report.succeeded()
-                    } else if (response.code() == 409) {
-                        recordConflict(harvest, response.errorBody()?.string() ?: "{}", "update_409")
-                        harvestDao.upsert(harvest.copy(pendingSync = false))
-                        report.failed("409")
-                    } else if (response.code() == 403) {
-                        // Terminal, per the FarmRepository/AgentRepository
-                        // pattern: a harvest on someone else's field is a
-                        // rejection no retry can fix.
-                        harvestDao.upsert(harvest.copy(pendingSync = false))
-                        report.failed("403")
                     } else {
+                        applyFailure(harvest, response.code(), response.errorBody()?.string(), "update")
                         report.failed(response.code().toString())
                     }
                 }
@@ -176,6 +164,7 @@ class HarvestRepository @Inject constructor(
                         harvestDao.markSyncedDelete(harvest.id, harvest.deletedAt ?: now)
                         report.succeeded()
                     } else {
+                        applyFailure(harvest, response.code(), response.errorBody()?.string(), "delete")
                         report.failed(response.code().toString())
                     }
                 }
@@ -238,17 +227,23 @@ class HarvestRepository @Inject constructor(
         return clean.size
     }
 
-    private suspend fun recordConflict(local: HarvestEntity, serverPayload: String, conflictType: String) {
-        syncConflictDao.insert(
-            SyncConflictEntity(
-                id = UUID.randomUUID().toString(),
-                entityType = "harvest",
-                entityId = local.id,
-                localPayload = local.toString(),
-                serverPayload = serverPayload,
-                conflictType = conflictType,
-                occurredAt = Clock.System.now().toString(),
-            )
+    /** Single exit for every non-2xx — classification lives in [RetryPolicy]. */
+    private suspend fun applyFailure(
+        harvest: HarvestEntity,
+        code: Int,
+        serverBody: String?,
+        verb: String,
+    ) {
+        val disposition = rejections.onFailure(
+            entityType = "harvest",
+            entityId = harvest.id,
+            localPayload = harvest.toString(),
+            code = code,
+            serverPayload = serverBody ?: "{}",
+            verb = verb,
         )
+        if (disposition != PushDisposition.RETRY) {
+            harvestDao.upsert(harvest.copy(pendingSync = false))
+        }
     }
 }

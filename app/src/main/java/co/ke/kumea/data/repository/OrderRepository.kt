@@ -3,14 +3,14 @@ package co.ke.kumea.data.repository
 import co.ke.kumea.data.local.OrderDao
 import co.ke.kumea.data.local.OrderEntity
 import co.ke.kumea.data.local.SyncAction
-import co.ke.kumea.data.local.SyncConflictDao
-import co.ke.kumea.data.local.SyncConflictEntity
 import co.ke.kumea.data.remote.KumeaApi
 import co.ke.kumea.data.remote.dto.OrderCreateRequest
 import co.ke.kumea.data.remote.dto.OrderUpdateRequest
 import co.ke.kumea.data.remote.parseErrorCode
+import co.ke.kumea.data.sync.PushDisposition
 import co.ke.kumea.data.sync.PushReport
 import co.ke.kumea.data.sync.PushReportBuilder
+import co.ke.kumea.data.sync.SyncRejectionRecorder
 import co.ke.kumea.data.sync.SyncableRepository
 import kotlinx.coroutines.flow.Flow
 import kotlinx.datetime.Clock
@@ -45,7 +45,7 @@ import javax.inject.Singleton
 @Singleton
 class OrderRepository @Inject constructor(
     private val orderDao: OrderDao,
-    private val syncConflictDao: SyncConflictDao,
+    private val rejections: SyncRejectionRecorder,
     private val api: KumeaApi,
 ) : SyncableRepository {
 
@@ -147,34 +147,19 @@ class OrderRepository @Inject constructor(
                         // errorBody().string() consumes the buffer — read it once.
                         val body = response.errorBody()?.string()
                         val code = response.code()
-                        when {
-                            isFkParentMissing(code, body) -> {
-                                // DEFER: farmer or selling agent not on the server
-                                // yet. Leave pendingSync=true; the next cycle retries
-                                // once the parent lands. Not a silent skip — the row
-                                // stays PENDING and the report records the deferral.
-                                report.deferred("FK parent not synced yet")
-                            }
-                            code == 409 -> {
-                                recordConflict(order, body ?: "{}", "create_409")
-                                orderDao.upsert(order.copy(pendingSync = false))
-                                report.failed("409")
-                            }
-                            code == 400 -> {
-                                // Permanent rejection (officer_cannot_sell, validation).
-                                // Record + clear so a barred order can't loop forever;
-                                // the UI already prevents these from being created.
-                                recordConflict(order, body ?: "{}", "create_rejected")
-                                orderDao.upsert(order.copy(pendingSync = false))
-                                report.failed("400")
-                            }
-                            else -> {
-                                // Transient (401 stale token, 5xx server). Leave the
-                                // row PENDING and surface the status loudly — the
-                                // TokenAuthenticator refreshes a 401 before we ever
-                                // see it, so a 401 here means refresh itself failed.
-                                report.failed(code.toString())
-                            }
+                        // The FK deferral is checked BEFORE the classifier: a
+                        // farmer or selling agent that is not on the server YET
+                        // is an ordering problem the next cycle fixes, and it
+                        // arrives as the same 400 that RetryPolicy otherwise
+                        // (correctly) calls terminal.
+                        if (isFkParentMissing(code, body)) {
+                            report.deferred("FK parent not synced yet")
+                        } else {
+                            // This repository already treated 400 as terminal —
+                            // it was the only one that did, and RetryPolicy now
+                            // makes that the rule everywhere.
+                            applyFailure(order, code, body, "create")
+                            report.failed(code.toString())
                         }
                     }
                 }
@@ -197,11 +182,8 @@ class OrderRepository @Inject constructor(
                     if (response.isSuccessful) {
                         orderDao.markSynced(order.id, response.body()!!.updatedAt)
                         report.succeeded()
-                    } else if (response.code() == 409) {
-                        recordConflict(order, response.errorBody()?.string() ?: "{}", "update_409")
-                        orderDao.upsert(order.copy(pendingSync = false))
-                        report.failed("409")
                     } else {
+                        applyFailure(order, response.code(), response.errorBody()?.string(), "update")
                         report.failed(response.code().toString())
                     }
                 }
@@ -212,6 +194,7 @@ class OrderRepository @Inject constructor(
                         orderDao.markSyncedDelete(order.id, order.deletedAt ?: now)
                         report.succeeded()
                     } else {
+                        applyFailure(order, response.code(), response.errorBody()?.string(), "delete")
                         report.failed(response.code().toString())
                     }
                 }
@@ -279,16 +262,18 @@ class OrderRepository @Inject constructor(
         return false
     }
 
-    private suspend fun recordConflict(local: OrderEntity, serverPayload: String, conflictType: String) {
-        val entity = SyncConflictEntity(
-            id = UUID.randomUUID().toString(),
+    /** Single exit for every non-2xx — classification lives in [RetryPolicy]. */
+    private suspend fun applyFailure(order: OrderEntity, code: Int, serverBody: String?, verb: String) {
+        val disposition = rejections.onFailure(
             entityType = "order",
-            entityId = local.id,
-            localPayload = local.toString(),
-            serverPayload = serverPayload,
-            conflictType = conflictType,
-            occurredAt = Clock.System.now().toString(),
+            entityId = order.id,
+            localPayload = order.toString(),
+            code = code,
+            serverPayload = serverBody ?: "{}",
+            verb = verb,
         )
-        syncConflictDao.insert(entity)
+        if (disposition != PushDisposition.RETRY) {
+            orderDao.upsert(order.copy(pendingSync = false))
+        }
     }
 }

@@ -8,8 +8,6 @@ import co.ke.kumea.data.local.FarmEntity
 import co.ke.kumea.data.local.NoteDao
 import co.ke.kumea.data.local.NoteEntity
 import co.ke.kumea.data.local.SyncAction
-import co.ke.kumea.data.local.SyncConflictDao
-import co.ke.kumea.data.local.SyncConflictEntity
 import co.ke.kumea.data.remote.KumeaApi
 import co.ke.kumea.data.remote.parseErrorCode
 import co.ke.kumea.data.remote.dto.FarmCreateRequest
@@ -23,15 +21,17 @@ import java.util.UUID
 import javax.inject.Inject
 import javax.inject.Singleton
 import kotlinx.datetime.Clock
+import co.ke.kumea.data.sync.PushDisposition
 import co.ke.kumea.data.sync.PushReport
 import co.ke.kumea.data.sync.PushReportBuilder
+import co.ke.kumea.data.sync.SyncRejectionRecorder
 import co.ke.kumea.data.sync.SyncableRepository
 
 @Singleton
 class FarmRepository @Inject constructor(
     private val farmDao: FarmDao,
     private val farmCropDao: FarmCropDao,
-    private val syncConflictDao: SyncConflictDao,
+    private val rejections: SyncRejectionRecorder,
     private val api: KumeaApi,
 ) : SyncableRepository {
 
@@ -46,6 +46,13 @@ class FarmRepository @Inject constructor(
      * the note-screen's Main-field inheritance silently fall back to defaults.
      */
     suspend fun getById(id: String): FarmEntity? = farmDao.getById(id)
+
+    /**
+     * The farm's crop set, once. Used by the planting flow to offer "which
+     * crop?" from what the farm already says it grows (KWAP-03-V2 §2.4).
+     */
+    suspend fun getCropsOnce(farmId: String): List<FarmCropEntity> =
+        farmCropDao.getByFarmOnce(farmId)
 
     /**
      * Self-registration: a farmer adding their own shamba.
@@ -253,20 +260,20 @@ class FarmRepository @Inject constructor(
                         report.succeeded()
                     } else {
                         val serverBody = response.errorBody()?.string()
-                        when {
-                            response.code() == 400 && parseErrorCode(serverBody) == "referrer_agent_not_found" -> {
-                                report.deferred("referrer agent not synced yet")
-                            }
-                            response.code() == 409 -> {
-                                recordConflict(farm, serverBody ?: "{}", "create_409")
-                                farmDao.upsert(farm.copy(pendingSync = false))
-                                report.failed("409")
-                            }
-                            response.code() == 403 -> {
-                                abandonForbidden(farm, serverBody, "create_403")
-                                report.failed("403")
-                            }
-                            else -> report.failed(response.code().toString())
+                        // THE ONE 400 THAT IS NOT TERMINAL, and it is checked
+                        // before the classifier for exactly that reason. The
+                        // server says 400 for "referrer agent not found", but
+                        // that agent is simply not on the server YET — it is a
+                        // FK ordering problem that the next cycle resolves, so
+                        // it defers rather than failing. Every other 400 is a
+                        // malformed body and RetryPolicy calls it terminal.
+                        if (response.code() == 400 &&
+                            parseErrorCode(serverBody) == "referrer_agent_not_found"
+                        ) {
+                            report.deferred("referrer agent not synced yet")
+                        } else {
+                            applyFailure(farm, response.code(), serverBody, "create")
+                            report.failed(response.code().toString())
                         }
                     }
                 }
@@ -281,14 +288,8 @@ class FarmRepository @Inject constructor(
                     if (response.isSuccessful) {
                         farmDao.markSynced(farm.id, response.body()!!.updatedAt)
                         report.succeeded()
-                    } else if (response.code() == 409) {
-                        recordConflict(farm, response.errorBody()?.string() ?: "{}", "update_409")
-                        farmDao.upsert(farm.copy(pendingSync = false))
-                        report.failed("409")
-                    } else if (response.code() == 403) {
-                        abandonForbidden(farm, response.errorBody()?.string(), "update_403")
-                        report.failed("403")
                     } else {
+                        applyFailure(farm, response.code(), response.errorBody()?.string(), "update")
                         report.failed(response.code().toString())
                     }
                 }
@@ -298,10 +299,8 @@ class FarmRepository @Inject constructor(
                         val now = Clock.System.now().toString()
                         farmDao.markSyncedDelete(farm.id, farm.deletedAt ?: now)
                         report.succeeded()
-                    } else if (response.code() == 403) {
-                        abandonForbidden(farm, response.errorBody()?.string(), "delete_403")
-                        report.failed("403")
                     } else {
+                        applyFailure(farm, response.code(), response.errorBody()?.string(), "delete")
                         report.failed(response.code().toString())
                     }
                 }
@@ -417,31 +416,28 @@ class FarmRepository @Inject constructor(
         return cleanEntities.size
     }
 
-    private suspend fun abandonForbidden(
-        local: FarmEntity,
-        serverPayload: String?,
-        conflictType: String,
-    ) {
-        // 403 is TERMINAL and must clear pendingSync. The server answers 403 —
-        // never 400 — for the on-behalf role and ward rejections precisely so
-        // this branch exists to catch them; left pending, a permanently refused
-        // row sits at the head of the queue and is re-sent on every sync cycle
-        // for ever. Audited before it is dropped, so a wrongly-refused
-        // registration is recoverable rather than merely gone.
-        recordConflict(local, serverPayload ?: "{}", conflictType)
-        farmDao.upsert(local.copy(pendingSync = false))
-    }
-
-    private suspend fun recordConflict(local: FarmEntity, serverPayload: String, conflictType: String) {
-        val entity = SyncConflictEntity(
-            id = UUID.randomUUID().toString(),
+    /**
+     * Single exit for every non-2xx (see [RetryPolicy]).
+     *
+     * This replaces `abandonForbidden` + `recordConflict`, which between them
+     * handled 403 and 409 and left 400/404 to retry for ever. The comment that
+     * used to live on `abandonForbidden` still applies and now applies to the
+     * whole terminal set: a permanently refused row left pending sits at the
+     * head of the queue and is re-sent on every cycle. It is audited before its
+     * pending flag is cleared, so a wrongly-refused registration is recoverable
+     * rather than merely gone.
+     */
+    private suspend fun applyFailure(farm: FarmEntity, code: Int, serverBody: String?, verb: String) {
+        val disposition = rejections.onFailure(
             entityType = "farm",
-            entityId = local.id,
-            localPayload = local.toString(),
-            serverPayload = serverPayload,
-            conflictType = conflictType,
-            occurredAt = Clock.System.now().toString(),
+            entityId = farm.id,
+            localPayload = farm.toString(),
+            code = code,
+            serverPayload = serverBody ?: "{}",
+            verb = verb,
         )
-        syncConflictDao.insert(entity)
+        if (disposition != PushDisposition.RETRY) {
+            farmDao.upsert(farm.copy(pendingSync = false))
+        }
     }
 }

@@ -4,6 +4,7 @@ import co.ke.kumea.data.local.AgentDao
 import co.ke.kumea.data.local.AgentEntity
 import co.ke.kumea.data.local.SyncAction
 import co.ke.kumea.data.local.SyncConflictDao
+import co.ke.kumea.data.sync.SyncRejectionRecorder
 import co.ke.kumea.data.local.SyncConflictEntity
 import co.ke.kumea.data.remote.FakeKumeaApi
 import co.ke.kumea.data.remote.dto.AgentCreateRequest
@@ -60,6 +61,10 @@ class AgentSyncTest {
     }
 
     private class NoOpConflictDao : SyncConflictDao {
+        override suspend fun count404(entityId: String): Int =
+            0
+        override fun getTerminalRejections(): Flow<List<SyncConflictEntity>> = flowOf(emptyList())
+        override suspend fun countTerminalRejections(): Int = 0
         override suspend fun insert(conflict: SyncConflictEntity) {}
     }
 
@@ -81,7 +86,7 @@ class AgentSyncTest {
     @Test
     fun `offline onboard marks the row pending CREATE with a minted code`() = runBlocking {
         val dao = FakeAgentDao()
-        val repo = AgentRepository(dao, NoOpConflictDao(), FakeKumeaApi())
+        val repo = AgentRepository(dao, SyncRejectionRecorder(NoOpConflictDao()), FakeKumeaApi())
 
         val id = repo.createLocal(role = "village_agent", region = "Nandi", endorsedById = "officer-1")
 
@@ -97,7 +102,7 @@ class AgentSyncTest {
     @Test
     fun `minted NNN advances per role and region`() = runBlocking {
         val dao = FakeAgentDao()
-        val repo = AgentRepository(dao, NoOpConflictDao(), FakeKumeaApi())
+        val repo = AgentRepository(dao, SyncRejectionRecorder(NoOpConflictDao()), FakeKumeaApi())
 
         val first = repo.createLocal(role = "village_agent", region = "Nandi")
         val second = repo.createLocal(role = "village_agent", region = "Nandi")
@@ -121,7 +126,7 @@ class AgentSyncTest {
                 return Response.success(serverAgent(agent.id, agent.agentCode!!, "2026-06-09T10:00:00Z"))
             }
         }
-        val repo = AgentRepository(dao, NoOpConflictDao(), api)
+        val repo = AgentRepository(dao, SyncRejectionRecorder(NoOpConflictDao()), api)
         val id = repo.createLocal(role = "village_agent", region = "Nandi")
         dao.pending = listOf(dao.rows.getValue(id))
 
@@ -152,7 +157,7 @@ class AgentSyncTest {
             override suspend fun getAgents(since: String?, includeDeleted: Boolean, role: String?): List<AgentResponse> =
                 listOf(serverAgent("a1", "VA-NANDI-009", "2026-06-09T08:00:00Z"))
         }
-        val repo = AgentRepository(dao, NoOpConflictDao(), api)
+        val repo = AgentRepository(dao, SyncRejectionRecorder(NoOpConflictDao()), api)
 
         val applied = repo.pullSince()
 
@@ -165,6 +170,10 @@ class AgentSyncTest {
     // ── KWAP-01A: a 403 is terminal ──────────────────────────────────────────
 
     private class RecordingConflictDao : SyncConflictDao {
+        override suspend fun count404(entityId: String): Int =
+            0
+        override fun getTerminalRejections(): Flow<List<SyncConflictEntity>> = flowOf(emptyList())
+        override suspend fun countTerminalRejections(): Int = 0
         val conflicts = mutableListOf<SyncConflictEntity>()
         override suspend fun insert(conflict: SyncConflictEntity) { conflicts += conflict }
     }
@@ -186,7 +195,7 @@ class AgentSyncTest {
                 return forbidden()
             }
         }
-        val repo = AgentRepository(dao, conflicts, api)
+        val repo = AgentRepository(dao, SyncRejectionRecorder(conflicts), api)
         val id = repo.createLocal(role = "village_agent", region = "Nandi")
         dao.pending = listOf(dao.rows.getValue(id))
 
@@ -198,7 +207,8 @@ class AgentSyncTest {
         assertFalse(dao.rows.getValue(id).pendingSync)
         // ...and what was refused is recorded rather than silently dropped.
         assertEquals(1, conflicts.conflicts.size)
-        assertEquals("create_403", conflicts.conflicts.first().conflictType)
+        // Label unified by RetryPolicy — 403 is one member of the terminal set now.
+        assertEquals("create_terminal_403", conflicts.conflicts.first().conflictType)
 
         // A second cycle re-reads pending rows; this one is no longer among them.
         dao.pending = dao.rows.values.filter { it.pendingSync }
@@ -214,7 +224,7 @@ class AgentSyncTest {
             override suspend fun createAgent(agent: AgentCreateRequest): Response<AgentResponse> =
                 Response.error(401, "".toResponseBody("application/json".toMediaType()))
         }
-        val repo = AgentRepository(dao, conflicts, api)
+        val repo = AgentRepository(dao, SyncRejectionRecorder(conflicts), api)
         val id = repo.createLocal(role = "village_agent", region = "Nandi")
         dao.pending = listOf(dao.rows.getValue(id))
 

@@ -5,6 +5,7 @@ import co.ke.kumea.data.local.FarmDao
 import co.ke.kumea.data.local.FarmEntity
 import co.ke.kumea.data.local.SyncAction
 import co.ke.kumea.data.local.SyncConflictDao
+import co.ke.kumea.data.sync.SyncRejectionRecorder
 import co.ke.kumea.data.local.SyncConflictEntity
 import co.ke.kumea.data.remote.FakeKumeaApi
 import co.ke.kumea.data.remote.dto.FarmCreateRequest
@@ -70,6 +71,10 @@ class FarmerRegistrationTest {
     }
 
     private class RecordingConflictDao : SyncConflictDao {
+        override suspend fun count404(entityId: String): Int =
+            inserts.count { it.conflictType.endsWith("_404") }
+        override fun getTerminalRejections(): Flow<List<SyncConflictEntity>> = flowOf(emptyList())
+        override suspend fun countTerminalRejections(): Int = 0
         val inserts = mutableListOf<SyncConflictEntity>()
         override suspend fun insert(conflict: SyncConflictEntity) { inserts.add(conflict) }
     }
@@ -104,7 +109,7 @@ class FarmerRegistrationTest {
             ): List<FarmResponse> = listOf(serverFarm("farm-1"))
         }
 
-        FarmRepository(farmDao, FakeFarmCropDao(), RecordingConflictDao(), api).pullSince()
+        FarmRepository(farmDao, FakeFarmCropDao(), SyncRejectionRecorder(RecordingConflictDao()), api).pullSince()
 
         val row = farmDao.rows.getValue("farm-1")
         assertEquals("agent-1", row.registeredByAgentId)
@@ -133,7 +138,7 @@ class FarmerRegistrationTest {
             ): List<FarmResponse> = listOf(serverFarm("farm-1"))
         }
 
-        FarmRepository(farmDao, FakeFarmCropDao(), RecordingConflictDao(), api).pullSince()
+        FarmRepository(farmDao, FakeFarmCropDao(), SyncRejectionRecorder(RecordingConflictDao()), api).pullSince()
 
         val row = farmDao.rows.getValue("farm-1")
         assertEquals("beans", row.cropType)
@@ -156,7 +161,7 @@ class FarmerRegistrationTest {
             }
         }
 
-        val repository = FarmRepository(farmDao, FakeFarmCropDao(), RecordingConflictDao(), api)
+        val repository = FarmRepository(farmDao, FakeFarmCropDao(), SyncRejectionRecorder(RecordingConflictDao()), api)
         assertEquals(1, repository.pullRegisteredByMe())
 
         // `me` is the only value the server accepts — anything else is a 400.
@@ -208,7 +213,7 @@ class FarmerRegistrationTest {
                 return Response.success(serverFarm(farm.id))
             }
         }
-        val repository = FarmRepository(farmDao, FakeFarmCropDao(), RecordingConflictDao(), api)
+        val repository = FarmRepository(farmDao, FakeFarmCropDao(), SyncRejectionRecorder(RecordingConflictDao()), api)
         repository.createLocalForFarmer(
             farmerName = "Sila Serem",
             farmerPhone = "+254712345678",
@@ -230,7 +235,7 @@ class FarmerRegistrationTest {
     @Test
     fun `a registration sets provenance and never sets the referrer`() = runBlocking {
         val farmDao = FakeFarmDao()
-        val repository = FarmRepository(farmDao, FakeFarmCropDao(), RecordingConflictDao(), FakeKumeaApi())
+        val repository = FarmRepository(farmDao, FakeFarmCropDao(), SyncRejectionRecorder(RecordingConflictDao()), FakeKumeaApi())
 
         val id = repository.createLocalForFarmer(
             farmerName = "Sila Serem",
@@ -255,7 +260,7 @@ class FarmerRegistrationTest {
     @Test
     fun `a saved registration is in the register before it has synced`() = runBlocking {
         val farmDao = FakeFarmDao()
-        val repository = FarmRepository(farmDao, FakeFarmCropDao(), RecordingConflictDao(), FakeKumeaApi())
+        val repository = FarmRepository(farmDao, FakeFarmCropDao(), SyncRejectionRecorder(RecordingConflictDao()), FakeKumeaApi())
 
         repository.createLocalForFarmer(
             farmerName = "Mercy Jepkoech",
@@ -285,7 +290,7 @@ class FarmerRegistrationTest {
                         .toResponseBody("application/json".toMediaType()),
                 )
         }
-        val repository = FarmRepository(farmDao, FakeFarmCropDao(), conflicts, api)
+        val repository = FarmRepository(farmDao, FakeFarmCropDao(), SyncRejectionRecorder(conflicts), api)
         val id = repository.createLocalForFarmer(
             farmerName = "Wrong Ward",
             farmerPhone = null,
@@ -301,6 +306,6 @@ class FarmerRegistrationTest {
         assertEquals(1, report.failed)
         assertFalse(farmDao.rows.getValue(id).pendingSync)
         assertEquals(1, conflicts.inserts.size)
-        assertEquals("create_403", conflicts.inserts.single().conflictType)
+        assertEquals("create_terminal_403", conflicts.inserts.single().conflictType)
     }
 }

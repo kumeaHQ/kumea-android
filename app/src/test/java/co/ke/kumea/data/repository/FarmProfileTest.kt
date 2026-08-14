@@ -8,6 +8,7 @@ import co.ke.kumea.data.local.HarvestUnits
 import co.ke.kumea.data.local.LocationSource
 import co.ke.kumea.data.local.SyncAction
 import co.ke.kumea.data.local.SyncConflictDao
+import co.ke.kumea.data.sync.SyncRejectionRecorder
 import co.ke.kumea.data.local.SyncConflictEntity
 import co.ke.kumea.data.location.CapturedLocation
 import co.ke.kumea.data.remote.FakeKumeaApi
@@ -57,6 +58,10 @@ class FarmProfileTest {
     }
 
     private class NoopConflictDao : SyncConflictDao {
+        override suspend fun count404(entityId: String): Int =
+            0
+        override fun getTerminalRejections(): Flow<List<SyncConflictEntity>> = flowOf(emptyList())
+        override suspend fun countTerminalRejections(): Int = 0
         override suspend fun insert(conflict: SyncConflictEntity) = Unit
     }
 
@@ -64,7 +69,7 @@ class FarmProfileTest {
         farmDao: FarmDao = FakeFarmDao(),
         cropDao: FakeFarmCropDao = FakeFarmCropDao(),
         api: FakeKumeaApi = FakeKumeaApi(),
-    ) = FarmRepository(farmDao, cropDao, NoopConflictDao(), api)
+    ) = FarmRepository(farmDao, cropDao, SyncRejectionRecorder(NoopConflictDao()), api)
 
     // ── the crop set ───────────────────────────────────────────────────────
 

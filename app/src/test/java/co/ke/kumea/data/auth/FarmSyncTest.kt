@@ -7,6 +7,7 @@ import co.ke.kumea.data.local.FarmDao
 import co.ke.kumea.data.local.FarmEntity
 import co.ke.kumea.data.local.SyncAction
 import co.ke.kumea.data.local.SyncConflictDao
+import co.ke.kumea.data.sync.SyncRejectionRecorder
 import co.ke.kumea.data.local.SyncConflictEntity
 import co.ke.kumea.data.remote.FakeKumeaApi
 import co.ke.kumea.data.remote.dto.FarmCreateRequest
@@ -56,6 +57,10 @@ class FarmSyncTest {
     }
 
     private class RecordingConflictDao : SyncConflictDao {
+        override suspend fun count404(entityId: String): Int =
+            inserts.count { it.conflictType.endsWith("_404") }
+        override fun getTerminalRejections(): Flow<List<SyncConflictEntity>> = flowOf(emptyList())
+        override suspend fun countTerminalRejections(): Int = 0
         val inserts = mutableListOf<SyncConflictEntity>()
         override suspend fun insert(conflict: SyncConflictEntity) { inserts.add(conflict) }
     }
@@ -63,7 +68,7 @@ class FarmSyncTest {
     @Test
     fun `offline create marks the row pending`() = runBlocking {
         val farmDao = FakeFarmDao()
-        val repository = FarmRepository(farmDao, FakeFarmCropDao(), RecordingConflictDao(), FakeKumeaApi())
+        val repository = FarmRepository(farmDao, FakeFarmCropDao(), SyncRejectionRecorder(RecordingConflictDao()), FakeKumeaApi())
 
         repository.createLocal(
             name = "Test Farm",
@@ -98,7 +103,7 @@ class FarmSyncTest {
                         .toResponseBody("application/json".toMediaType()),
                 )
         }
-        val repository = FarmRepository(farmDao, FakeFarmCropDao(), conflicts, api)
+        val repository = FarmRepository(farmDao, FakeFarmCropDao(), SyncRejectionRecorder(conflicts), api)
         val id = repository.createLocal(
             name = "Demo Farmer", location = null,
             waterSource = null, referrerAgentId = "agent-not-synced",

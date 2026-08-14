@@ -6,6 +6,7 @@ import co.ke.kumea.data.local.NoteEntity
 import co.ke.kumea.data.local.NoteType
 import co.ke.kumea.data.local.SyncAction
 import co.ke.kumea.data.local.SyncConflictDao
+import co.ke.kumea.data.sync.SyncRejectionRecorder
 import co.ke.kumea.data.local.SyncConflictEntity
 import co.ke.kumea.data.remote.FakeKumeaApi
 import co.ke.kumea.data.remote.dto.NoteCreateRequest
@@ -54,6 +55,9 @@ class NoteSyncTest {
 
     private class NoOpConflictDao : SyncConflictDao {
         override suspend fun insert(conflict: SyncConflictEntity) {}
+        override suspend fun count404(entityId: String): Int = 0
+        override fun getTerminalRejections(): Flow<List<SyncConflictEntity>> = flowOf(emptyList())
+        override suspend fun countTerminalRejections(): Int = 0
     }
 
     private fun noteResponse(amountCents: String?, updatedAt: String = "t") = NoteResponse(
@@ -65,7 +69,7 @@ class NoteSyncTest {
     @Test
     fun `offline create stores a pending purchase with integer cents`() = runBlocking {
         val dao = FakeNoteDao()
-        val repository = NoteRepository(dao, NoOpConflictDao(), FakeKumeaApi())
+        val repository = NoteRepository(dao, SyncRejectionRecorder(NoOpConflictDao()), FakeKumeaApi())
 
         val id = repository.createLocal(
             fieldId = "field-1",
@@ -102,7 +106,7 @@ class NoteSyncTest {
                 return Response.success(noteResponse(aboveTwo53Wire, updatedAt = "t2"))
             }
         }
-        val repository = NoteRepository(dao, NoOpConflictDao(), api)
+        val repository = NoteRepository(dao, SyncRejectionRecorder(NoOpConflictDao()), api)
 
         val report = repository.pushPending()
 
@@ -120,7 +124,7 @@ class NoteSyncTest {
             override suspend fun getNotes(since: String?, includeDeleted: Boolean): List<NoteResponse> =
                 listOf(noteResponse(aboveTwo53Wire))
         }
-        val repository = NoteRepository(dao, NoOpConflictDao(), api)
+        val repository = NoteRepository(dao, SyncRejectionRecorder(NoOpConflictDao()), api)
 
         val pulled = repository.pullSince()
 
@@ -141,7 +145,7 @@ class NoteSyncTest {
                 return Response.success(noteResponse("50000", updatedAt = "t2"))
             }
         }
-        val repository = NoteRepository(dao, NoOpConflictDao(), api)
+        val repository = NoteRepository(dao, SyncRejectionRecorder(NoOpConflictDao()), api)
 
         repository.createLocal(
             fieldId = "field-1",
@@ -170,7 +174,7 @@ class NoteSyncTest {
                     noteResponse(null).copy(id = "none", type = "ACTIVITY", costCategory = null),
                 )
         }
-        val repository = NoteRepository(dao, NoOpConflictDao(), api)
+        val repository = NoteRepository(dao, SyncRejectionRecorder(NoOpConflictDao()), api)
 
         repository.pullSince()
 

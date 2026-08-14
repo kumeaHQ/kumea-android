@@ -3,13 +3,13 @@ package co.ke.kumea.data.repository
 import co.ke.kumea.data.local.AgentDao
 import co.ke.kumea.data.local.AgentEntity
 import co.ke.kumea.data.local.SyncAction
-import co.ke.kumea.data.local.SyncConflictDao
-import co.ke.kumea.data.local.SyncConflictEntity
 import co.ke.kumea.data.remote.KumeaApi
 import co.ke.kumea.data.remote.dto.AgentCreateRequest
 import co.ke.kumea.data.remote.dto.AgentUpdateRequest
+import co.ke.kumea.data.sync.PushDisposition
 import co.ke.kumea.data.sync.PushReport
 import co.ke.kumea.data.sync.PushReportBuilder
+import co.ke.kumea.data.sync.SyncRejectionRecorder
 import co.ke.kumea.data.sync.SyncableRepository
 import co.ke.kumea.util.AgentCode
 import kotlinx.coroutines.flow.Flow
@@ -38,7 +38,7 @@ import javax.inject.Singleton
 @Singleton
 class AgentRepository @Inject constructor(
     private val agentDao: AgentDao,
-    private val syncConflictDao: SyncConflictDao,
+    private val rejections: SyncRejectionRecorder,
     private val api: KumeaApi,
 ) : SyncableRepository {
 
@@ -199,15 +199,8 @@ class AgentRepository @Inject constructor(
                             ),
                         )
                         report.succeeded()
-                    } else if (response.code() == 409) {
-                        recordConflict(agent, response.errorBody()?.string() ?: "{}", "create_409")
-                        agentDao.upsert(agent.copy(pendingSync = false))
-                        report.failed("409")
-                    } else if (response.code() == 403) {
-                        abandonForbidden(agent, response.errorBody()?.string(), "create_403")
-                        report.failed("403")
                     } else {
-                        // Left pending; surfaced loudly (e.g. 401 = refresh failed, 5xx).
+                        applyFailure(agent, response.code(), response.errorBody()?.string(), "create")
                         report.failed(response.code().toString())
                     }
                 }
@@ -226,14 +219,8 @@ class AgentRepository @Inject constructor(
                     if (response.isSuccessful) {
                         agentDao.markSynced(agent.id, response.body()!!.updatedAt)
                         report.succeeded()
-                    } else if (response.code() == 409) {
-                        recordConflict(agent, response.errorBody()?.string() ?: "{}", "update_409")
-                        agentDao.upsert(agent.copy(pendingSync = false))
-                        report.failed("409")
-                    } else if (response.code() == 403) {
-                        abandonForbidden(agent, response.errorBody()?.string(), "update_403")
-                        report.failed("403")
                     } else {
+                        applyFailure(agent, response.code(), response.errorBody()?.string(), "update")
                         report.failed(response.code().toString())
                     }
                 }
@@ -243,10 +230,8 @@ class AgentRepository @Inject constructor(
                         val now = Clock.System.now().toString()
                         agentDao.markSyncedDelete(agent.id, agent.deletedAt ?: now)
                         report.succeeded()
-                    } else if (response.code() == 403) {
-                        abandonForbidden(agent, response.errorBody()?.string(), "delete_403")
-                        report.failed("403")
                     } else {
+                        applyFailure(agent, response.code(), response.errorBody()?.string(), "delete")
                         report.failed(response.code().toString())
                     }
                 }
@@ -321,25 +306,28 @@ class AgentRepository @Inject constructor(
      * lands in the PushReport, which SyncWorker logs at error level; there is no
      * silent path out of here.
      */
-    private suspend fun abandonForbidden(
-        local: AgentEntity,
-        serverPayload: String?,
-        conflictType: String,
-    ) {
-        recordConflict(local, serverPayload ?: "{}", conflictType)
-        agentDao.upsert(local.copy(pendingSync = false))
-    }
-
-    private suspend fun recordConflict(local: AgentEntity, serverPayload: String, conflictType: String) {
-        val entity = SyncConflictEntity(
-            id = UUID.randomUUID().toString(),
+    /**
+     * Single exit for every non-2xx (see [RetryPolicy]).
+     *
+     * Replaces `abandonForbidden` + `recordConflict`. The reasoning that used to
+     * sit on `abandonForbidden` now covers the whole terminal set: the row is
+     * NOT deleted, the rejection is written to the sync-conflict audit exactly
+     * like a 409 — so what the device tried to do, and was told it could not,
+     * survives for inspection instead of vanishing — and the status still lands
+     * in the PushReport, which SyncWorker logs at error level. There is no
+     * silent path out of here.
+     */
+    private suspend fun applyFailure(agent: AgentEntity, code: Int, serverBody: String?, verb: String) {
+        val disposition = rejections.onFailure(
             entityType = "agent",
-            entityId = local.id,
-            localPayload = local.toString(),
-            serverPayload = serverPayload,
-            conflictType = conflictType,
-            occurredAt = Clock.System.now().toString(),
+            entityId = agent.id,
+            localPayload = agent.toString(),
+            code = code,
+            serverPayload = serverBody ?: "{}",
+            verb = verb,
         )
-        syncConflictDao.insert(entity)
+        if (disposition != PushDisposition.RETRY) {
+            agentDao.upsert(agent.copy(pendingSync = false))
+        }
     }
 }

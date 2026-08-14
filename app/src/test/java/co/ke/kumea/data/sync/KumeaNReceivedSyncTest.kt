@@ -4,6 +4,7 @@ import co.ke.kumea.data.local.KumeaNReceivedDao
 import co.ke.kumea.data.local.KumeaNReceivedEntity
 import co.ke.kumea.data.local.SyncAction
 import co.ke.kumea.data.local.SyncConflictDao
+import co.ke.kumea.data.sync.SyncRejectionRecorder
 import co.ke.kumea.data.local.SyncConflictEntity
 import co.ke.kumea.data.remote.FakeKumeaApi
 import co.ke.kumea.data.remote.dto.KumeaNReceivedCreateRequest
@@ -61,6 +62,10 @@ class KumeaNReceivedSyncTest {
     }
 
     private class RecordingConflictDao : SyncConflictDao {
+        override suspend fun count404(entityId: String): Int =
+            inserts.count { it.conflictType.endsWith("_404") }
+        override fun getTerminalRejections(): Flow<List<SyncConflictEntity>> = flowOf(emptyList())
+        override suspend fun countTerminalRejections(): Int = 0
         val inserts = mutableListOf<SyncConflictEntity>()
         override suspend fun insert(conflict: SyncConflictEntity) { inserts.add(conflict) }
     }
@@ -103,7 +108,7 @@ class KumeaNReceivedSyncTest {
                     .toResponseBody("application/json".toMediaType()),
             )
         }
-        val repo = KumeaNReceivedRepository(dao, conflicts, api)
+        val repo = KumeaNReceivedRepository(dao, SyncRejectionRecorder(conflicts), api)
         val id = repo.recordOne()
 
         val report = repo.pushPending()
@@ -128,7 +133,7 @@ class KumeaNReceivedSyncTest {
             ): Response<KumeaNReceivedResponse> =
                 Response.error(500, "".toResponseBody("application/json".toMediaType()))
         }
-        val repo = KumeaNReceivedRepository(dao, RecordingConflictDao(), api)
+        val repo = KumeaNReceivedRepository(dao, SyncRejectionRecorder(RecordingConflictDao()), api)
         val id = repo.recordOne()
 
         repo.pushPending()
@@ -183,7 +188,7 @@ class KumeaNReceivedSyncTest {
                 return Response.success(serverRow(record.id))
             }
         }
-        val repo = KumeaNReceivedRepository(dao, RecordingConflictDao(), api)
+        val repo = KumeaNReceivedRepository(dao, SyncRejectionRecorder(RecordingConflictDao()), api)
         val id = repo.recordOne()
 
         val report = repo.pushPending()
@@ -204,7 +209,7 @@ class KumeaNReceivedSyncTest {
                 includeDeleted: Boolean,
             ): List<KumeaNReceivedResponse> = dao.rows.keys.map { serverRow(it) }
         }
-        val repo = KumeaNReceivedRepository(dao, RecordingConflictDao(), api)
+        val repo = KumeaNReceivedRepository(dao, SyncRejectionRecorder(RecordingConflictDao()), api)
         val id = repo.recordOne()
 
         val pulled = repo.pullSince()
@@ -225,7 +230,7 @@ class KumeaNReceivedSyncTest {
                 includeDeleted: Boolean,
             ): List<KumeaNReceivedResponse> = listOf(serverRow("record-1"))
         }
-        val repo = KumeaNReceivedRepository(dao, RecordingConflictDao(), api)
+        val repo = KumeaNReceivedRepository(dao, SyncRejectionRecorder(RecordingConflictDao()), api)
 
         assertEquals(1, repo.pullSince())
 
@@ -250,6 +255,6 @@ class KumeaNReceivedSyncTest {
         // device, and a handset with nothing to fetch must complete quietly.
         // SyncWorker runs the whole set in one try block, so anything thrown
         // here would abort that device's entire cycle.
-        assertEquals(0, KumeaNReceivedRepository(dao, RecordingConflictDao(), api).pullSince())
+        assertEquals(0, KumeaNReceivedRepository(dao, SyncRejectionRecorder(RecordingConflictDao()), api).pullSince())
     }
 }

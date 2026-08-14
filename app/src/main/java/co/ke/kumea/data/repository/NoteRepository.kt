@@ -5,8 +5,6 @@ import co.ke.kumea.data.local.NoteDao
 import co.ke.kumea.data.local.NoteEntity
 import co.ke.kumea.data.local.NoteType
 import co.ke.kumea.data.local.SyncAction
-import co.ke.kumea.data.local.SyncConflictDao
-import co.ke.kumea.data.local.SyncConflictEntity
 import co.ke.kumea.data.remote.KumeaApi
 import co.ke.kumea.data.remote.dto.NoteCreateRequest
 import co.ke.kumea.data.remote.dto.NoteUpdateRequest
@@ -15,8 +13,10 @@ import java.util.UUID
 import javax.inject.Inject
 import javax.inject.Singleton
 import kotlinx.datetime.Clock
+import co.ke.kumea.data.sync.PushDisposition
 import co.ke.kumea.data.sync.PushReport
 import co.ke.kumea.data.sync.PushReportBuilder
+import co.ke.kumea.data.sync.SyncRejectionRecorder
 import co.ke.kumea.data.sync.SyncableRepository
 
 /**
@@ -33,7 +33,7 @@ import co.ke.kumea.data.sync.SyncableRepository
 @Singleton
 class NoteRepository @Inject constructor(
     private val noteDao: NoteDao,
-    private val syncConflictDao: SyncConflictDao,
+    private val rejections: SyncRejectionRecorder,
     private val api: KumeaApi,
 ) : SyncableRepository {
     /** Observe all active notes (live, via Room Flow). */
@@ -155,12 +155,8 @@ class NoteRepository @Inject constructor(
                     if (response.isSuccessful) {
                         noteDao.markSynced(note.id, response.body()!!.updatedAt)
                         report.succeeded()
-                    } else if (response.code() == 409) {
-                        recordConflict(note, response.errorBody()?.string() ?: "{}", "create_409")
-                        noteDao.upsert(note.copy(pendingSync = false))
-                        report.failed("409")
                     } else {
-                        // Left pending; surfaced with its status (no silent skip).
+                        applyFailure(note, response.code(), response.errorBody()?.string(), "create")
                         report.failed(response.code().toString())
                     }
                 }
@@ -179,11 +175,8 @@ class NoteRepository @Inject constructor(
                     if (response.isSuccessful) {
                         noteDao.markSynced(note.id, response.body()!!.updatedAt)
                         report.succeeded()
-                    } else if (response.code() == 409) {
-                        recordConflict(note, response.errorBody()?.string() ?: "{}", "update_409")
-                        noteDao.upsert(note.copy(pendingSync = false))
-                        report.failed("409")
                     } else {
+                        applyFailure(note, response.code(), response.errorBody()?.string(), "update")
                         report.failed(response.code().toString())
                     }
                 }
@@ -194,6 +187,7 @@ class NoteRepository @Inject constructor(
                         noteDao.markSyncedDelete(note.id, note.deletedAt ?: now)
                         report.succeeded()
                     } else {
+                        applyFailure(note, response.code(), response.errorBody()?.string(), "delete")
                         report.failed(response.code().toString())
                     }
                 }
@@ -251,16 +245,18 @@ class NoteRepository @Inject constructor(
         return cleanEntities.size
     }
 
-    private suspend fun recordConflict(local: NoteEntity, serverPayload: String, conflictType: String) {
-        val entity = SyncConflictEntity(
-            id = UUID.randomUUID().toString(),
+    /** Single exit for every non-2xx — classification lives in [RetryPolicy]. */
+    private suspend fun applyFailure(note: NoteEntity, code: Int, serverBody: String?, verb: String) {
+        val disposition = rejections.onFailure(
             entityType = "note",
-            entityId = local.id,
-            localPayload = local.toString(),
-            serverPayload = serverPayload,
-            conflictType = conflictType,
-            occurredAt = Clock.System.now().toString(),
+            entityId = note.id,
+            localPayload = note.toString(),
+            code = code,
+            serverPayload = serverBody ?: "{}",
+            verb = verb,
         )
-        syncConflictDao.insert(entity)
+        if (disposition != PushDisposition.RETRY) {
+            noteDao.upsert(note.copy(pendingSync = false))
+        }
     }
 }

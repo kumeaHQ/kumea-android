@@ -4,8 +4,6 @@ import co.ke.kumea.data.local.FarmDao
 import co.ke.kumea.data.local.FieldDao
 import co.ke.kumea.data.local.FieldEntity
 import co.ke.kumea.data.local.SyncAction
-import co.ke.kumea.data.local.SyncConflictDao
-import co.ke.kumea.data.local.SyncConflictEntity
 import co.ke.kumea.data.remote.KumeaApi
 import co.ke.kumea.data.remote.dto.FieldCreateRequest
 import co.ke.kumea.data.remote.dto.FieldUpdateRequest
@@ -14,8 +12,10 @@ import java.util.UUID
 import javax.inject.Inject
 import javax.inject.Singleton
 import kotlinx.datetime.Clock
+import co.ke.kumea.data.sync.PushDisposition
 import co.ke.kumea.data.sync.PushReport
 import co.ke.kumea.data.sync.PushReportBuilder
+import co.ke.kumea.data.sync.SyncRejectionRecorder
 import co.ke.kumea.data.sync.SyncableRepository
 
 /**
@@ -32,7 +32,7 @@ import co.ke.kumea.data.sync.SyncableRepository
 class FieldRepository @Inject constructor(
     private val fieldDao: FieldDao,
     private val farmDao: FarmDao,
-    private val syncConflictDao: SyncConflictDao,
+    private val rejections: SyncRejectionRecorder,
     private val api: KumeaApi,
 ) : SyncableRepository {
     /** Observe all active fields (live, via Room Flow). */
@@ -147,13 +147,8 @@ class FieldRepository @Inject constructor(
                     if (response.isSuccessful) {
                         fieldDao.markSynced(field.id, response.body()!!.updatedAt)
                         report.succeeded()
-                    } else if (response.code() == 409) {
-                        // Conflict — server wins, record and discard local.
-                        recordConflict(field, response.errorBody()?.string() ?: "{}", "create_409")
-                        fieldDao.upsert(field.copy(pendingSync = false))
-                        report.failed("409")
                     } else {
-                        // Left pending; surfaced with its status (no silent skip).
+                        applyFailure(field, response.code(), response.errorBody()?.string(), "create")
                         report.failed(response.code().toString())
                     }
                 }
@@ -168,11 +163,8 @@ class FieldRepository @Inject constructor(
                     if (response.isSuccessful) {
                         fieldDao.markSynced(field.id, response.body()!!.updatedAt)
                         report.succeeded()
-                    } else if (response.code() == 409) {
-                        recordConflict(field, response.errorBody()?.string() ?: "{}", "update_409")
-                        fieldDao.upsert(field.copy(pendingSync = false))
-                        report.failed("409")
                     } else {
+                        applyFailure(field, response.code(), response.errorBody()?.string(), "update")
                         report.failed(response.code().toString())
                     }
                 }
@@ -184,6 +176,7 @@ class FieldRepository @Inject constructor(
                         fieldDao.markSyncedDelete(field.id, field.deletedAt ?: now)
                         report.succeeded()
                     } else {
+                        applyFailure(field, response.code(), response.errorBody()?.string(), "delete")
                         report.failed(response.code().toString())
                     }
                 }
@@ -249,16 +242,18 @@ class FieldRepository @Inject constructor(
         return cleanEntities.size
     }
 
-    private suspend fun recordConflict(local: FieldEntity, serverPayload: String, conflictType: String) {
-        val entity = SyncConflictEntity(
-            id = UUID.randomUUID().toString(),
+    /** Single exit for every non-2xx — classification lives in [RetryPolicy]. */
+    private suspend fun applyFailure(field: FieldEntity, code: Int, serverBody: String?, verb: String) {
+        val disposition = rejections.onFailure(
             entityType = "field",
-            entityId = local.id,
-            localPayload = local.toString(),
-            serverPayload = serverPayload,
-            conflictType = conflictType,
-            occurredAt = Clock.System.now().toString(),
+            entityId = field.id,
+            localPayload = field.toString(),
+            code = code,
+            serverPayload = serverBody ?: "{}",
+            verb = verb,
         )
-        syncConflictDao.insert(entity)
+        if (disposition != PushDisposition.RETRY) {
+            fieldDao.upsert(field.copy(pendingSync = false))
+        }
     }
 }

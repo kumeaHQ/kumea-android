@@ -3,12 +3,12 @@ package co.ke.kumea.data.repository
 import co.ke.kumea.data.local.KumeaNReceivedDao
 import co.ke.kumea.data.local.KumeaNReceivedEntity
 import co.ke.kumea.data.local.SyncAction
-import co.ke.kumea.data.local.SyncConflictDao
-import co.ke.kumea.data.local.SyncConflictEntity
 import co.ke.kumea.data.remote.KumeaApi
 import co.ke.kumea.data.remote.dto.KumeaNReceivedCreateRequest
+import co.ke.kumea.data.sync.PushDisposition
 import co.ke.kumea.data.sync.PushReport
 import co.ke.kumea.data.sync.PushReportBuilder
+import co.ke.kumea.data.sync.SyncRejectionRecorder
 import co.ke.kumea.data.sync.SyncableRepository
 import kotlinx.coroutines.flow.Flow
 import kotlinx.datetime.Clock
@@ -31,7 +31,7 @@ import javax.inject.Singleton
 @Singleton
 class KumeaNReceivedRepository @Inject constructor(
     private val dao: KumeaNReceivedDao,
-    private val syncConflictDao: SyncConflictDao,
+    private val rejections: SyncRejectionRecorder,
     private val api: KumeaApi,
 ) : SyncableRepository {
 
@@ -116,20 +116,10 @@ class KumeaNReceivedRepository @Inject constructor(
                             dao.markSynced(record.id, response.body()!!.updatedAt)
                             report.succeeded()
                         }
-                        response.code() == 409 -> {
-                            recordConflict(record, response.errorBody()?.string() ?: "{}", "create_409")
-                            dao.upsert(record.copy(pendingSync = false))
-                            report.failed("409")
+                        else -> {
+                            applyFailure(record, response.code(), response.errorBody()?.string(), "create")
+                            report.failed(response.code().toString())
                         }
-                        response.code() == 403 -> {
-                            // Terminal, like FarmRepository's: the caller is no
-                            // longer an active agent. Audited, then dropped from
-                            // the queue rather than retried for ever.
-                            recordConflict(record, response.errorBody()?.string() ?: "{}", "create_403")
-                            dao.upsert(record.copy(pendingSync = false))
-                            report.failed("403")
-                        }
-                        else -> report.failed(response.code().toString())
                     }
                 }
                 // A handover is a fact about a moment; it is not edited. The UI
@@ -142,6 +132,7 @@ class KumeaNReceivedRepository @Inject constructor(
                         dao.markSyncedDelete(record.id, record.deletedAt ?: Clock.System.now().toString())
                         report.succeeded()
                     } else {
+                        applyFailure(record, response.code(), response.errorBody()?.string(), "delete")
                         report.failed(response.code().toString())
                     }
                 }
@@ -191,21 +182,27 @@ class KumeaNReceivedRepository @Inject constructor(
         return clean.size
     }
 
-    private suspend fun recordConflict(
-        local: KumeaNReceivedEntity,
-        serverPayload: String,
-        conflictType: String,
+    /**
+     * Single exit for every non-2xx (see [RetryPolicy]). The 403 case this used
+     * to special-case — the caller is no longer an active agent — is now one
+     * member of the terminal set, audited before its pending flag is cleared.
+     */
+    private suspend fun applyFailure(
+        record: KumeaNReceivedEntity,
+        code: Int,
+        serverBody: String?,
+        verb: String,
     ) {
-        syncConflictDao.insert(
-            SyncConflictEntity(
-                id = UUID.randomUUID().toString(),
-                entityType = "kumea_n_received",
-                entityId = local.id,
-                localPayload = local.toString(),
-                serverPayload = serverPayload,
-                conflictType = conflictType,
-                occurredAt = Clock.System.now().toString(),
-            )
+        val disposition = rejections.onFailure(
+            entityType = "kumea_n_received",
+            entityId = record.id,
+            localPayload = record.toString(),
+            code = code,
+            serverPayload = serverBody ?: "{}",
+            verb = verb,
         )
+        if (disposition != PushDisposition.RETRY) {
+            dao.upsert(record.copy(pendingSync = false))
+        }
     }
 }

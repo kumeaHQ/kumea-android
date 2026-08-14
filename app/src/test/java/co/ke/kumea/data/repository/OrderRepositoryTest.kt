@@ -4,6 +4,7 @@ import co.ke.kumea.data.local.OrderDao
 import co.ke.kumea.data.local.OrderEntity
 import co.ke.kumea.data.local.SyncAction
 import co.ke.kumea.data.local.SyncConflictDao
+import co.ke.kumea.data.sync.SyncRejectionRecorder
 import co.ke.kumea.data.local.SyncConflictEntity
 import co.ke.kumea.data.remote.FakeKumeaApi
 import co.ke.kumea.data.remote.dto.OrderCreateRequest
@@ -61,6 +62,10 @@ class OrderRepositoryTest {
     }
 
     private class RecordingConflictDao : SyncConflictDao {
+        override suspend fun count404(entityId: String): Int =
+            inserts.count { it.conflictType.endsWith("_404") }
+        override fun getTerminalRejections(): Flow<List<SyncConflictEntity>> = flowOf(emptyList())
+        override suspend fun countTerminalRejections(): Int = 0
         val inserts = mutableListOf<SyncConflictEntity>()
         override suspend fun insert(conflict: SyncConflictEntity) { inserts.add(conflict) }
     }
@@ -77,7 +82,7 @@ class OrderRepositoryTest {
     @Test
     fun `createLocal stores cents as a Long and marks the row pending CREATE`() = runBlocking {
         val dao = FakeOrderDao()
-        val repository = OrderRepository(dao, RecordingConflictDao(), FakeKumeaApi())
+        val repository = OrderRepository(dao, SyncRejectionRecorder(RecordingConflictDao()), FakeKumeaApi())
 
         val id = repository.createLocal(
             farmerId = "farm-1", agentId = "agent-va-uuid", agentCode = "VA-NANDI-014", dealerId = null,
@@ -104,7 +109,7 @@ class OrderRepositoryTest {
                 return Response.success(orderResponse(order))
             }
         }
-        val repository = OrderRepository(dao, RecordingConflictDao(), api)
+        val repository = OrderRepository(dao, SyncRejectionRecorder(RecordingConflictDao()), api)
         val id = repository.createLocal(
             farmerId = "farm-1", agentId = "agent-va-uuid", agentCode = "VA-NANDI-014", dealerId = null,
             sku = "BFX-150G", qty = 2, unitPrice = 100000L,
@@ -135,7 +140,7 @@ class OrderRepositoryTest {
                 return Response.success(orderResponse(order))
             }
         }
-        val repository = OrderRepository(dao, RecordingConflictDao(), api)
+        val repository = OrderRepository(dao, SyncRejectionRecorder(RecordingConflictDao()), api)
         val id = repository.createLocal(
             farmerId = "farm-1", agentId = null, agentCode = null, dealerId = null,
             sku = "BFX-50G", qty = 1, unitPrice = aboveTwo53,
@@ -159,7 +164,7 @@ class OrderRepositoryTest {
             override suspend fun createOrder(order: OrderCreateRequest): Response<OrderResponse> =
                 Response.error(404, errorBody("""{"statusCode":404,"message":"Farmer not found","error":"Not Found"}"""))
         }
-        val repository = OrderRepository(dao, conflicts, api)
+        val repository = OrderRepository(dao, SyncRejectionRecorder(conflicts), api)
         val id = repository.createLocal(
             farmerId = "farm-not-synced", agentId = "agent-va-uuid", agentCode = "VA-NANDI-014", dealerId = null,
             sku = "BFX-150G", qty = 1, unitPrice = 100000L,
@@ -187,7 +192,7 @@ class OrderRepositoryTest {
             override suspend fun createOrder(order: OrderCreateRequest): Response<OrderResponse> =
                 Response.error(400, errorBody("""{"code":"agent_not_found","message":"agentId must reference an existing agent."}"""))
         }
-        val repository = OrderRepository(dao, conflicts, api)
+        val repository = OrderRepository(dao, SyncRejectionRecorder(conflicts), api)
         val id = repository.createLocal(
             farmerId = "farm-1", agentId = "agent-not-synced-uuid", agentCode = "VA-NANDI-099", dealerId = null,
             sku = "BFX-150G", qty = 1, unitPrice = 100000L,
@@ -212,7 +217,7 @@ class OrderRepositoryTest {
             override suspend fun createOrder(order: OrderCreateRequest): Response<OrderResponse> =
                 Response.error(400, errorBody(officerBody))
         }
-        val repository = OrderRepository(dao, conflicts, api)
+        val repository = OrderRepository(dao, SyncRejectionRecorder(conflicts), api)
         val id = repository.createLocal(
             farmerId = "farm-1", agentId = "agent-eo-uuid", agentCode = "EO-NANDI-001", dealerId = null,
             sku = "BFX-150G", qty = 1, unitPrice = 100000L,
@@ -229,7 +234,10 @@ class OrderRepositoryTest {
         assertEquals("400", report.failures.single())
         assertFalse(dao.rows.getValue(id).pendingSync)
         assertEquals(1, conflicts.inserts.size)
-        assertEquals("create_rejected", conflicts.inserts.single().conflictType)
+        // Was the bespoke "create_rejected". This repository was the only one
+        // that already treated 400 as terminal; RetryPolicy makes it the rule
+        // and gives every terminal rejection the same label shape.
+        assertEquals("create_terminal_400", conflicts.inserts.single().conflictType)
     }
 
     @Test
