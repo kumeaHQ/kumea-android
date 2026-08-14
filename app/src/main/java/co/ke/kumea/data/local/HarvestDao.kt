@@ -28,8 +28,9 @@ interface HarvestDao {
     suspend fun getByIds(ids: List<String>): List<HarvestEntity>
 
     /**
-     * One active harvest by id. Distinct from [getByIds], which deliberately
-     * sees soft-deleted rows.
+     * One active harvest by id — the edit path's read (KWAP-03-V2 §2.1).
+     * Distinct from [getByIds], which deliberately sees soft-deleted rows: the
+     * wizard must never re-open a record the farmer has already deleted.
      */
     @Query("SELECT * FROM harvests WHERE id = :id AND deletedAt IS NULL")
     suspend fun getById(id: String): HarvestEntity?

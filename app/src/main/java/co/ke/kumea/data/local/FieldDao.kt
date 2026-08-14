@@ -20,6 +20,16 @@ interface FieldDao {
     @Query("SELECT * FROM fields WHERE farmId = :farmId AND deletedAt IS NULL AND syncAction != 'DELETE' ORDER BY updatedAt DESC")
     fun getActiveByFarm(farmId: String): Flow<List<FieldEntity>>
 
+    /**
+     * The one-Field-per-Farm invariant's read (KWAP-03-V2 §2.2). Field is hidden
+     * from the farmer's vocabulary but NOT dropped, and the whole reason the
+     * eventual Field→Farm merge stays cheap is that the mapping is 1:1. A second
+     * field on any farm turns that merge into an N:1 question nobody has
+     * answered, so creation refuses one.
+     */
+    @Query("SELECT * FROM fields WHERE farmId = :farmId AND deletedAt IS NULL ORDER BY createdAt ASC LIMIT 1")
+    suspend fun getFirstActiveForFarm(farmId: String): FieldEntity?
+
     /** Single active field by id — pending OR synced (Build-2: setPlantedAt needs synced rows too). */
     @Query("SELECT * FROM fields WHERE id = :id AND deletedAt IS NULL AND syncAction != 'DELETE' LIMIT 1")
     suspend fun getById(id: String): FieldEntity?

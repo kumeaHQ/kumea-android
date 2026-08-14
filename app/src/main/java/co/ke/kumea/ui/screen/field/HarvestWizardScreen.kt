@@ -20,6 +20,7 @@ import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material3.Button
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.Icon
@@ -54,6 +55,7 @@ import co.ke.kumea.ui.theme.GoldWash
 import co.ke.kumea.ui.theme.HarvestGold
 import co.ke.kumea.ui.theme.InkMuted
 import co.ke.kumea.ui.theme.KumeaButtonShape
+import co.ke.kumea.util.Area
 import co.ke.kumea.util.Quantity
 
 /**
@@ -78,7 +80,14 @@ fun HarvestWizardScreen(
     Scaffold(
         topBar = {
             TopAppBar(
-                title = { Text(stringResource(R.string.harvest_title), color = DeepLeaf) },
+                title = {
+                    Text(
+                        stringResource(
+                            if (state.isEdit) R.string.harvest_title_edit else R.string.harvest_title,
+                        ),
+                        color = DeepLeaf,
+                    )
+                },
                 navigationIcon = {
                     IconButton(onClick = { if (!viewModel.stepBack()) onBack() }) {
                         Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back")
@@ -96,12 +105,20 @@ fun HarvestWizardScreen(
         ) {
             GoldDots(currentOrdinal = state.step.ordinal)
 
-            when (state.step) {
-                HarvestStep.QUANTITY -> QuantityStep(viewModel, state)
-                HarvestStep.UNIT -> UnitStep(viewModel, state)
-                HarvestStep.SPLIT -> SplitStep(viewModel, state)
-                HarvestStep.REPLANT -> ReplantStep(viewModel, state)
-                HarvestStep.REVIEW -> ReviewStep(viewModel, state)
+            // Edit mode reads the existing record first. Rendering the steps
+            // against empty state for that frame would show the farmer a blank
+            // wizard where their own figures should be.
+            if (state.loading) {
+                CircularProgressIndicator(modifier = Modifier.align(Alignment.CenterHorizontally))
+            } else {
+                when (state.step) {
+                    HarvestStep.QUANTITY -> QuantityStep(viewModel, state)
+                    HarvestStep.SANITY -> SanityStep(viewModel, state)
+                    HarvestStep.UNIT -> UnitStep(viewModel, state)
+                    HarvestStep.SPLIT -> SplitStep(viewModel, state)
+                    HarvestStep.REPLANT -> ReplantStep(viewModel, state)
+                    HarvestStep.REVIEW -> ReviewStep(viewModel, state)
+                }
             }
 
             state.error?.let {
@@ -121,7 +138,9 @@ private fun GoldDots(currentOrdinal: Int) {
         modifier = Modifier.fillMaxWidth(),
         horizontalArrangement = Arrangement.Center,
     ) {
-        repeat(5) { i ->
+        // Derived from the enum, not a literal 5 — §2.8 added a sixth step and a
+        // hardcoded count would have silently stopped drawing the last dot.
+        repeat(HarvestStep.entries.size) { i ->
             val dotModifier = when {
                 i < currentOrdinal -> Modifier.background(HarvestGold, CircleShape)
                 i == currentOrdinal -> Modifier
@@ -135,6 +154,58 @@ private fun GoldDots(currentOrdinal: Int) {
                     .then(dotModifier),
             )
         }
+    }
+}
+
+/**
+ * THE YIELD SANITY LINE (KWAP-03-V2 §2.8, decision 10).
+ *
+ * The one cross-check in the whole app, on the one number the impact report is
+ * computed from. Everything else is captured once and trusted (decision 6); a
+ * yield is worth a second look because a farmer who means 8 gorogoro and taps
+ * bags is out by a factor of 45, and nobody will be able to tell in December.
+ *
+ * It shows the derived arithmetic rather than asking the farmer to re-enter
+ * anything: total kilograms, the planted area it was divided by, and the result.
+ * "Change" goes back to the quantity and adjusts NOTHING on its own.
+ */
+@Composable
+private fun SanityStep(viewModel: HarvestWizardViewModel, state: HarvestWizardState) {
+    val kgCenti = state.qtyKgCenti
+    val perAcreCenti = state.kgPerAcreCenti
+    val areaCenti = state.plantedAreaCenti
+
+    StepTitle(stringResource(R.string.harvest_sanity_title), R.drawable.ic_scale)
+
+    if (kgCenti != null && perAcreCenti != null && areaCenti != null) {
+        Text(
+            stringResource(
+                R.string.harvest_sanity_body,
+                Quantity.formatCenti(kgCenti),
+                Area.formatCenti(areaCenti),
+                Quantity.formatCenti(perAcreCenti),
+            ),
+            style = MaterialTheme.typography.titleMedium,
+        )
+    }
+
+    Text(
+        stringResource(R.string.harvest_sanity_question),
+        style = MaterialTheme.typography.bodyMedium,
+        color = MaterialTheme.colorScheme.onSurfaceVariant,
+    )
+
+    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+        Button(
+            onClick = viewModel::stepNext,
+            shape = KumeaButtonShape,
+            modifier = Modifier.weight(1f),
+        ) { Text(stringResource(R.string.harvest_sanity_yes)) }
+        OutlinedButton(
+            onClick = viewModel::reviseQuantity,
+            shape = KumeaButtonShape,
+            modifier = Modifier.weight(1f),
+        ) { Text(stringResource(R.string.harvest_sanity_change)) }
     }
 }
 

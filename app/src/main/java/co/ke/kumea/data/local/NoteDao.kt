@@ -39,6 +39,18 @@ interface NoteDao {
     suspend fun getById(id: String): NoteEntity?
 
     /**
+     * The note a given record generated (KWAP-03-V2 §2.5) — the seed Purchase
+     * written by a planting. At most one: the planting repository updates this
+     * row rather than adding another, which is what stops "invested" doubling.
+     */
+    @Query("SELECT * FROM notes WHERE sourceType = :sourceType AND sourceId = :sourceId AND deletedAt IS NULL AND syncAction != 'DELETE' LIMIT 1")
+    suspend fun findBySource(sourceType: String, sourceId: String): NoteEntity?
+
+    /** Local rows by id, INCLUDING soft-deleted — pull's carry-forward read. */
+    @Query("SELECT * FROM notes WHERE id IN (:ids)")
+    suspend fun getByIds(ids: List<String>): List<NoteEntity>
+
+    /**
      * Rows with pending local changes that need pushing. Same invariant as
      * FieldDao: pullSince() skips pending rows so push gets its turn first.
      */

@@ -18,6 +18,9 @@ import co.ke.kumea.data.remote.dto.HarvestResponse
 import co.ke.kumea.data.remote.dto.HarvestUpdateRequest
 import co.ke.kumea.data.remote.dto.KumeaNReceivedCreateRequest
 import co.ke.kumea.data.remote.dto.KumeaNReceivedResponse
+import co.ke.kumea.data.remote.dto.PlantingCreateRequest
+import co.ke.kumea.data.remote.dto.PlantingResponse
+import co.ke.kumea.data.remote.dto.PlantingUpdateRequest
 import co.ke.kumea.data.remote.dto.HealthResponse
 import co.ke.kumea.data.remote.dto.LoginRequest
 import co.ke.kumea.data.remote.dto.LogoutRequest
@@ -92,6 +95,22 @@ open class FakeKumeaApi : KumeaApi {
         record: KumeaNReceivedCreateRequest,
     ): Response<KumeaNReceivedResponse> = nope()
     override suspend fun deleteKumeaNReceived(id: String): Response<Unit> = nope()
+
+    // KWAP-03-V2 §2.3. Same situation as the Kumea N routes above, one step
+    // earlier: these do not exist on the server at all yet, and
+    // PlantingRepository is not bound into the sync set.
+    override suspend fun getPlantings(
+        since: String?,
+        includeDeleted: Boolean,
+    ): List<PlantingResponse> = nope()
+    override suspend fun createPlanting(
+        planting: PlantingCreateRequest,
+    ): Response<PlantingResponse> = nope()
+    override suspend fun updatePlanting(
+        id: String,
+        planting: PlantingUpdateRequest,
+    ): Response<PlantingResponse> = nope()
+    override suspend fun deletePlanting(id: String): Response<Unit> = nope()
 
     override suspend fun getNotes(since: String?, includeDeleted: Boolean): List<NoteResponse> = nope()
     override suspend fun createNote(note: NoteCreateRequest): Response<NoteResponse> = nope()

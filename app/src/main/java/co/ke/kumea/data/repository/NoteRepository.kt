@@ -57,7 +57,18 @@ class NoteRepository @Inject constructor(
         amountCents: Long?,
         occurredAt: String,
         costCategory: CostCategory? = null,
+        sourceType: String? = null,
+        sourceId: String? = null,
     ): String {
+        // §2.7: the activity log carries observations, not money. Enforced here
+        // rather than only in the form, because the form is not the only caller
+        // and a rule that lives in a composable is a rule one screen keeps.
+        require(type != NoteType.ACTIVITY || amountCents == null) {
+            "an ACTIVITY note carries no money — the two ledgers are PURCHASE and SALE (§2.7)"
+        }
+        require(type != NoteType.ACTIVITY || costCategory == null) {
+            "an ACTIVITY note carries no cost category — see NoteType.ACTIVITY"
+        }
         val now = Clock.System.now().toString()
         val id = UUID.randomUUID().toString()
         val note = NoteEntity(
@@ -67,6 +78,8 @@ class NoteRepository @Inject constructor(
             body = body,
             amountCents = amountCents,
             costCategory = costCategory,
+            sourceType = sourceType,
+            sourceId = sourceId,
             occurredAt = occurredAt,
             createdAt = now,
             updatedAt = now,
@@ -78,20 +91,26 @@ class NoteRepository @Inject constructor(
         return id
     }
 
+    /** The note a planting generated, if it wrote one (§2.5). */
+    suspend fun findBySource(sourceType: String, sourceId: String): NoteEntity? =
+        noteDao.findBySource(sourceType, sourceId)
+
     /**
      * Update a note locally (offline-first).
      *
-     * PRODUCTION BUG FIX. The read was `getPendingSync().find { it.id == id }`,
-     * which could only ever see rows that had NOT yet synced. On a shipped
-     * handset, editing a note the server already had did nothing at all — and
-     * returned as though it had worked, so nothing surfaced. Reads by id now.
+     * The read was `getPendingSync().find { it.id == id }`, which could only see
+     * rows that had NOT yet synced — an already-pushed note silently ignored the
+     * edit and returned as though it had worked. That gap was tolerable while no
+     * UI exercised a synced-row edit; §2.5 exercises it directly, because
+     * changing a planting's seed cost has to update a Purchase note that has
+     * very likely synced already. Reads by id now.
      */
     suspend fun updateLocal(
         id: String,
-        type: NoteType?,
-        body: String?,
-        amountCents: Long?,
-        occurredAt: String?,
+        type: NoteType? = null,
+        body: String? = null,
+        amountCents: Long? = null,
+        occurredAt: String? = null,
         costCategory: CostCategory? = null,
     ) {
         val now = Clock.System.now().toString()
@@ -216,7 +235,18 @@ class NoteRepository @Inject constructor(
 
         if (serverNotes.isEmpty()) return 0
 
+        // sourceType/sourceId are DEVICE-ONLY — the server's note DTO does not
+        // whitelist them (NoteEntity explains why they cannot be added), so it
+        // cannot echo them back. Rebuilding a row from the server alone would
+        // write null over the link and un-hide the seed Purchase in the ledger,
+        // re-opening the double-count §2.5 exists to prevent. Carried forward
+        // from the local row, exactly as farms and harvests carry their own
+        // device-only columns. WHEN THE SERVER LEARNS THESE FIELDS, they move to
+        // `server.x` in the same commit that adds them to NoteResponse.
+        val existing = noteDao.getByIds(serverNotes.map { it.id }).associateBy { it.id }
+
         val localEntities = serverNotes.map { server ->
+            val local = existing[server.id]
             NoteEntity(
                 id = server.id,
                 fieldId = server.fieldId,
@@ -226,6 +256,8 @@ class NoteRepository @Inject constructor(
                 amountCents = server.amountCents?.toLong(),
                 // wire String → enum (by name); null stays uncategorised.
                 costCategory = server.costCategory?.let { CostCategory.valueOf(it) },
+                sourceType = local?.sourceType,
+                sourceId = local?.sourceId,
                 occurredAt = server.occurredAt,
                 createdAt = server.createdAt,
                 updatedAt = server.updatedAt,

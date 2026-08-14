@@ -40,7 +40,7 @@ these choices.
 
 ## Project Structure
 
-112 Kotlin files under `app/src/main/java/co/ke/kumea/` (verified 12 Aug 2026).
+133 Kotlin files under `app/src/main/java/co/ke/kumea/` (verified 14 Aug 2026).
 
 ```
 app/src/main/java/co/ke/kumea/
@@ -49,20 +49,21 @@ app/src/main/java/co/ke/kumea/
   data/
     auth/TokenStore.kt         # DataStore: access_token, refresh_token
     local/                     # Room entities + DAOs: Agent, Farm, FarmCrop, Field,
-                               #   Harvest, KumeaNReceived, Note, Order, SyncConflict
-                               #   + KumeaDatabase (v13)
+                               #   Harvest, KumeaNReceived, Note, Order, Planting,
+                               #   SyncConflict
+                               #   + KumeaDatabase (v14)
     location/LocationCapturer.kt # Platform LocationManager (NOT play-services)
     remote/                    # KumeaApi, AuthRefreshApi, ApiErrors
       dto/                     # 21 request/response DTOs
       interceptor/             # AuthInterceptor, TokenAuthenticator
     repository/                # Agent, Auth, Commission, Farm, Field, Harvest,
-                               #   Health, Ledger, Note, Order, Persona
+                               #   Health, Ledger, Note, Order, Persona, Planting
     sync/                      # SyncableRepository, SyncWorker, SyncScheduler,
                                #   SyncNotifier, PushReport  (see "Sync architecture")
   di/                          # Hilt modules: Network, Database, DataStore, Repository
   domain/model/                # Persona.kt (FARMER / VILLAGE_AGENT / EXTENSION_OFFICER)
                                #   Crop.kt (the crop catalogue, grouped)
-  util/                        # AgentCode, Money, Phone, Quantity
+  util/                        # AgentCode, Area, Money, Phone, Quantity, YieldConversion
   ui/
     navigation/                # KumeaNavHost (contains `object Routes`), StartupViewModel
     common/                    # KumeaLockup, PaperCard, PullToRefresh, SyncBadge
@@ -70,7 +71,7 @@ app/src/main/java/co/ke/kumea/
     screen/agent/              # VillageAgentHome
     screen/auth/               # PhoneEntry, OtpEntry, PinSetup, PinEntry
     screen/farm/               # FarmList, FarmCreate, FarmHome, FarmDetailViewModel
-    screen/field/              # PlantingDate, HarvestWizard
+    screen/field/              # Planting (flow + VM), HarvestWizard
     screen/home/               # Landing (persona dispatcher)
     screen/ledger/             # Ledger
     screen/note/               # NoteCreate, NoteDetailViewModel
@@ -78,7 +79,7 @@ app/src/main/java/co/ke/kumea/
     screen/order/              # OrderCreate
 ```
 
-Tests live in `app/src/test/java/co/ke/kumea/` (19 files, 109 tests: sync,
+Tests live in `app/src/test/java/co/ke/kumea/` (24 files, 268 tests: sync,
 repository, persona, money, phone, token store, schema/enum/wire contracts,
 location capture, farm profile). There is
 no `androidTest` source set — which is why `SchemaMigrationTest` guards the
@@ -140,7 +141,7 @@ If you find `catch (Exception) { clearSession() }` anywhere, flag it immediately
 
 ### Room migration discipline — hardest constraint in the project
 
-**The DB is at version 13. Destructive fallback has been permanently removed
+**The DB is at version 14. Destructive fallback has been permanently removed
 (`di/DatabaseModule.kt`). Every schema change from v10 onward MUST ship a
 hand-written `Migration`.**
 
@@ -182,6 +183,24 @@ Rules:
   `kg` and `gorogoro` get their canonical kilograms, while ones recorded in
   `bags` are deliberately left at 0 with `conversionSource = 'unknown'`, because
   a bag is 50 or 90 kg and a guess there would be indistinguishable from data.
+  `MIGRATION_13_14` (KWAP-03-V2) — the `plantings` table + its index, two
+  nullable `TEXT` columns on `notes`, **plus a backfill**: every
+  `fields.plantedAt` becomes a planting row, with a deterministic
+  `'planting-' || fields.id` id so a re-run cannot double-insert. It moves zero
+  rows on the current handsets and is written as though it matters anyway,
+  because ~395 KWAP farms do not exist on any device yet. Seed weight and
+  planted area backfill as **0, not from `farms.acres`** — nobody was asked, and
+  a fabricated denominator in yield-per-acre is the same class of error as
+  guessing a bag size.
+
+### Retired in place, not dropped
+
+A column this project stops using is left in the table and in the entity:
+`farms.useGps`, and now `fields.plantedAt` + `fields.trialRole` (both superseded
+by `plantings`). Dropping a column in SQLite means recreating the table, which on
+a populated `fields` with two FK children is the riskiest thing a migration could
+do for no user-visible gain. Stop writing it, stop reading it, say so in the
+entity — and leave the column alone.
 
 ### Sync conflict resolution
 
@@ -236,12 +255,34 @@ on first launch — aggressive OEMs (Samsung) kill WorkManager jobs otherwise.
 | Concept | Type | Notes |
 |---------|------|-------|
 | Money | `BigInt` (cents) | KES, divide by 100 for display |
-| Area | `Decimal(10, 4)` | Acres to 4 decimal places |
+| Area | `Decimal(10, 4)` server-side | Acres to 4 dp. **On device: see below** |
 | Percentage | `Decimal(5, 4)` | 0.0000–1.0000, multiply by 100 for display |
 | Timestamps | UTC in DB, EAT (UTC+3) display | Use `kotlinx-datetime` |
 | IDs | UUID v4 | Client-generated for mutable entities |
 | Phone numbers | E.164 `String` | Normalized to `+254…` |
 | Soft deletes | `deletedAt` column | Queries filter `WHERE deletedAt IS NULL` |
+
+### Area on the device — three representations, one crossing
+
+`Decimal(10, 4)` above describes the **server's** column. The device has never
+stored a Decimal, and now holds three different shapes:
+
+| Where | Type | Why |
+|---|---|---|
+| `farms.acres` | `Double?` (v9) | the farm's size as it was typed |
+| `fields.acres` | `String` | preserves the farmer's exact decimal verbatim |
+| `plantings.plantedAreaCenti` | `Long`, centi (v14) | it gets divided into a centi-Long |
+
+**`util/Area.kt` is the only sanctioned `Double → centi-Long` crossing. Never
+write `(acres * 100).toLong()`.** It rounds explicitly rather than truncating,
+and it is the single place that decision is recorded.
+
+**Planted area is deliberately 2 dp, not 4 (decided 14 Aug, before any row
+existed).** 0.01 acre ≈ 40 m², already finer than a recalled answer to "how much
+of your shamba did you plant?"; and yield per acre is
+`harvests.qtyKgCenti ÷ plantedAreaCenti`, which stays integer end-to-end only if
+both sides share a scale. Sub-centi area would need a measured input first, not a
+wider column. Full reasoning in `Area.kt`.
 
 
 ## Build Tool Version Discipline
@@ -276,6 +317,10 @@ the build before.
 - Configuration cache: **disabled** (Hilt + AGP 8.5 rough edges). Re-enable once Sprint 1 is green.
 
 ## Active Ticket
+
+**KWAP-03-V2 is built (14 Aug) and is the most recent work — see its section
+below.** KWAP-01 step 5 (agent farmer-create + own roster) is still the next
+unstarted item, and the sequence below is unchanged by it.
 
 **TICKET-KWAP-01 — Farmer registration by officers and agents**
 Full spec: `/Users/kumea/Desktop/Kumea-Claude/TICKET-KWAP-01-farmer-registration.md`
@@ -378,15 +423,59 @@ Four decisions taken during the build, each recorded where it applies:
    farms into one headline figure, and the neighbouring quantity columns in the
    same table are already centi.
 
-`kumea_n_received` is fully written including push/pull, and **not bound** into
-`Set<SyncableRepository>` — a push at a route that does not exist is a 404, and
-404 is not terminal here. Uncomment the `@Binds @IntoSet` in `RepositoryModule`
-the moment the server patch is deployed.
+`kumea_n_received` is fully written including push/pull and **is now bound**
+into `Set<SyncableRepository>` (`958552e`), because its server patch deployed.
+The pattern it established is still live, though: **`plantings` is written and
+deliberately NOT bound** — see KWAP-03-V2 below.
 
 **The ledger now has no entry point.** Removing the farmer page's money card
 (§5.4) removed the only navigation into `Routes.LEDGER`. The route and
 `LedgerScreen` are intact and deliberately left registered; giving the agent
 surface its own link is agent-home work.
+
+## TICKET-KWAP-03-V2 — Farmer page refinements (14 Aug, built)
+
+Spec: `~/Desktop/Kumea-Claude/TICKET-KWAP-03-V2-farmer-page.md`. **Room v14.**
+
+What the eight ⚠️VERIFY checks actually found, since two contradicted the ticket:
+
+- **V1 — the harvest "tick with no record" was NOT a farmId/fieldId mismatch.**
+  The tick and its date always came from one flow. `SeasonRecordCard` — the
+  composable that renders the harvest — was **orphaned in the KWAP-03 rewrite and
+  called from nowhere**, and the Shughuli feed lists `notes` only. So a farm with
+  one harvest and no notes showed "Harvest ✓" above "no activity yet". Fixed by
+  wiring the card back to the same `latestHarvest` flow the tick reads.
+- **V8 — `trialRole` had already shipped** on `FieldEntity` in v13. It moves to
+  `plantings`; the Field column is retired in place.
+- V5 confirmed `farms.acres` is `Double?`. `fields.acres` is a `String`, so
+  there are **three** area representations — `util/Area.kt` is the single
+  sanctioned `Double → centi-Long` crossing. Do not write `(acres * 100).toLong()`.
+- V2's backfill is zero-row on every device checked. V3 found no ACTIVITY row
+  carrying money. V4 was pure removal (the picker already auto-selected).
+
+**`plantings` is written, complete, and NOT bound into `Set<SyncableRepository>`.**
+`kumea-api` has no Planting model, controller or DTO — a push would 404, and 404
+is not terminal, so binding it early would poison the queue exactly as
+`cropType`/`acres`/`useGps` and `kept`/`sold` did. The `@Binds @IntoSet` is
+commented out in `RepositoryModule` with the conditions for arming it.
+`PlantingDtos.kt` is a **proposal, not a contract** — diff it by hand first.
+
+**`notes.sourceType` / `sourceId` are device-only for the same reason.** The
+server's `CreateNoteDto` does not whitelist them and runs
+`forbidNonWhitelisted: true`. `NoteRepository.pullSince()` carries them forward
+from the local row; losing the link would un-hide the seed Purchase and re-open
+the double-count.
+
+Two repository bugs this ticket had to fix because §2.5 made them load-bearing:
+`NoteRepository.updateLocal`/`deleteLocal` and `HarvestRepository.deleteLocal`
+all read `getPendingSync().find { it.id == id }`, so they silently ignored any
+row that had already synced. All three read by id now.
+
+**§2.6 says red for a purchase; the code keeps Clay.** `LedgerScreen` got there
+first — "buckets are inputs, not losses" — and the ticket's real requirement
+(colour is not the only signal) is met by the `−`/`+` prefix. Clay-vs-LeafGreen
+is also a brown/green contrast rather than the red/green pair ~8% of men cannot
+separate, so this is strictly safer than what was specified.
 
 ### Still open
 
@@ -398,6 +487,16 @@ surface its own link is agent-home work.
   than picked. Numbers are in `PRICE-MATRIX-LOCKED.md` (revised 12 Aug).
   `SkuOptions` still holds the superseded 14 Jun codes and says so in a comment.
   Land before the first real sale.
+- 🔴 **`plantings` has no server half.** The client is done and unbound; the
+  server needs a Planting model, controller, DTO and migration before the
+  `@Binds @IntoSet` in `RepositoryModule` can be uncommented. Until then a
+  planting lives only on the device that recorded it.
+- **v13 → v14 has not been run on a handset.** The SQL was verified against a
+  pulled copy of the real v13 device database (111 agents + TestFarm survive,
+  `foreign_key_check` clean, backfill correct) and the resulting schema was
+  diffed column-for-column against Room's exported `14.json`, which is the check
+  Room performs on open. The device was unplugged before `adb install`. Do that
+  before shipping anything to a WAO.
 - ~~**Crop capture is still a single string.**~~ **Done (KWAP-03).** `farm_crops`
   holds the set, `CropMultiSelect` cycles growing → interested, and
   `farms.cropType` stays as the list-card denorm sourced from the selection.

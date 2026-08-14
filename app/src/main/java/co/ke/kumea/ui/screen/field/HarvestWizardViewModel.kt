@@ -6,7 +6,9 @@ import androidx.lifecycle.viewModelScope
 import co.ke.kumea.data.local.ConversionSource
 import co.ke.kumea.data.local.HarvestUnits
 import co.ke.kumea.data.local.ReplantIntent
+import co.ke.kumea.data.repository.FieldRepository
 import co.ke.kumea.data.repository.HarvestRepository
+import co.ke.kumea.data.repository.PlantingRepository
 import co.ke.kumea.util.Quantity
 import co.ke.kumea.util.YieldConversion
 import dagger.hilt.android.lifecycle.HiltViewModel
@@ -23,7 +25,23 @@ import javax.inject.Inject
 
 // Unit BEFORE quantity (field feedback, 11 Jul): "bags — how many?" matches the
 // farmer's mental model; "how many of what?" does not. Ordinal drives progress.
-enum class HarvestStep { UNIT, QUANTITY, SPLIT, REPLANT, REVIEW }
+// SANITY sits immediately after QUANTITY (§2.8): the cross-check has to happen
+// while the farmer still has the figure they just typed in mind.
+enum class HarvestStep { UNIT, QUANTITY, SANITY, SPLIT, REPLANT, REVIEW }
+
+/**
+ * Which branch the farmer took at the yield sanity line (§2.8).
+ *
+ * Recorded rather than discarded, because "a farmer looked at 450 kg/acre and
+ * said yes" is itself a data point — an outlier that was confirmed in person is
+ * a different thing from an outlier nobody was ever shown.
+ */
+object YieldCheck {
+    /** No planting record, so no per-acre figure could be derived. Not shown. */
+    const val NOT_SHOWN = "not_shown"
+    const val CONFIRMED = "confirmed"
+    const val REVISED = "revised"
+}
 
 data class HarvestWizardState(
     val step: HarvestStep = HarvestStep.UNIT,
@@ -42,6 +60,14 @@ data class HarvestWizardState(
     val isSaving: Boolean = false,
     val error: String? = null,
     val saved: Boolean = false,
+    /** True when re-opened on an existing record; save updates instead of creating. */
+    val isEdit: Boolean = false,
+    /** Planted area (centi-acres) from the farm's planting record; null if none. */
+    val plantedAreaCenti: Long? = null,
+    /** [YieldCheck] — which branch the farmer took, or NOT_SHOWN. */
+    val yieldCheck: String = YieldCheck.NOT_SHOWN,
+    /** Only ever true on the edit path, while the existing record is read. */
+    val loading: Boolean = false,
 ) {
     /** Bags cannot move on until a size is chosen; nothing else asks. */
     val unitStepComplete: Boolean
@@ -51,6 +77,26 @@ data class HarvestWizardState(
      * kg-per-unit to apply, and where it came from. Null only when a bag size
      * is still outstanding — which the UNIT step will not let past.
      */
+    /** Canonical kilograms for the typed quantity, or null while incomplete. */
+    val qtyKgCenti: Long?
+        get() {
+            val quantity = Quantity.parseToCenti(quantityText) ?: return null
+            val factor = conversion?.first ?: return null
+            return YieldConversion.toKgCenti(quantity, factor)
+        }
+
+    /**
+     * kg per acre × 100, or null when there is no planting record to divide by
+     * — §2.8 then shows the total only, and the wizard skips the SANITY step
+     * rather than showing a line it cannot compute.
+     */
+    val kgPerAcreCenti: Long?
+        get() {
+            val kg = qtyKgCenti ?: return null
+            val area = plantedAreaCenti ?: return null
+            return YieldConversion.kgPerAcreCenti(kg, area)
+        }
+
     val conversion: Pair<Long, String>?
         get() {
             val unit = unit ?: return null
@@ -76,6 +122,8 @@ data class HarvestWizardState(
 @HiltViewModel
 class HarvestWizardViewModel @Inject constructor(
     private val harvestRepository: HarvestRepository,
+    private val fieldRepository: FieldRepository,
+    private val plantingRepository: PlantingRepository,
     savedStateHandle: SavedStateHandle,
 ) : ViewModel() {
 
@@ -83,8 +131,63 @@ class HarvestWizardViewModel @Inject constructor(
         "HarvestWizardViewModel requires a fieldId nav argument"
     }
 
-    private val _state = MutableStateFlow(HarvestWizardState())
+    /**
+     * Set when the farmer tapped the season record to correct it (§2.1). Null on
+     * the create path. This is the whole of "edit mode" — there is no second
+     * screen, because the wizard already asks every question the record holds.
+     */
+    private val harvestId: String? = savedStateHandle["harvestId"]
+
+    private val _state = MutableStateFlow(
+        HarvestWizardState(isEdit = harvestId != null, loading = harvestId != null),
+    )
     val state: StateFlow<HarvestWizardState> = _state.asStateFlow()
+
+    init {
+        // The planted area for the sanity line (§2.8). The wizard is entered
+        // with a fieldId, and plantings are farm-level, so the farm is resolved
+        // through the field. Absent planting → null → the SANITY step is skipped
+        // and the harvest still saves normally.
+        viewModelScope.launch {
+            val farmId = fieldRepository.getById(fieldId)?.farmId
+            val planting = farmId?.let { plantingRepository.getLatestForFarm(it) }
+            _state.update {
+                it.copy(plantedAreaCenti = planting?.plantedAreaCenti?.takeIf { area -> area > 0 })
+            }
+        }
+
+        val id = harvestId
+        if (id != null) {
+            viewModelScope.launch {
+                val existing = harvestRepository.getById(id)
+                if (existing == null) {
+                    // Deleted underneath us, or a stale back-stack entry. Better
+                    // to say so than to silently open an empty wizard that would
+                    // save a SECOND harvest.
+                    _state.update {
+                        it.copy(loading = false, error = "That harvest record is no longer there")
+                    }
+                    return@launch
+                }
+                _state.update {
+                    it.copy(
+                        loading = false,
+                        unit = existing.unit,
+                        // The stored factor IS the bag size the farmer stated;
+                        // re-deriving it from a default table would overwrite an
+                        // answer with an assumption.
+                        bagSizeCenti = existing.conversionFactorCenti
+                            .takeIf { _ -> existing.unit == HarvestUnits.BAGS },
+                        quantityText = Quantity.formatCenti(existing.quantityCenti),
+                        keptText = existing.keptCenti?.let(Quantity::formatCenti).orEmpty(),
+                        soldText = existing.soldCenti?.let(Quantity::formatCenti).orEmpty(),
+                        replantIntent = existing.replantIntent,
+                        replantMonth = existing.replantMonth,
+                    )
+                }
+            }
+        }
+    }
 
     fun onQuantityChange(text: String) = _state.update { it.copy(quantityText = text, error = null) }
     fun onUnitSelected(unit: String) = _state.update {
@@ -136,7 +239,17 @@ class HarvestWizardViewModel @Inject constructor(
                     _state.update { it.copy(error = "Enter a valid amount (e.g. 1.2)") }
                     return
                 }
-                _state.update { it.copy(step = HarvestStep.SPLIT) }
+                // Skip the sanity line entirely when there is no planted area to
+                // divide by (§2.8). Showing "720 kg — does that sound right?"
+                // with no per-acre figure asks the farmer to check arithmetic
+                // that was never done.
+                _state.update {
+                    if (it.kgPerAcreCenti != null) it.copy(step = HarvestStep.SANITY)
+                    else it.copy(step = HarvestStep.SPLIT, yieldCheck = YieldCheck.NOT_SHOWN)
+                }
+            }
+            HarvestStep.SANITY -> _state.update {
+                it.copy(step = HarvestStep.SPLIT, yieldCheck = YieldCheck.CONFIRMED)
             }
             HarvestStep.SPLIT -> {
                 // Optional step, but if values are typed they must parse and
@@ -166,6 +279,14 @@ class HarvestWizardViewModel @Inject constructor(
         }
     }
 
+    /**
+     * "Change" — back to the quantity, marked REVISED. It does NOT silently
+     * adjust anything (§2.8); the farmer retypes the figure themselves.
+     */
+    fun reviseQuantity() = _state.update {
+        it.copy(step = HarvestStep.QUANTITY, yieldCheck = YieldCheck.REVISED, error = null)
+    }
+
     fun skipSplit() = _state.update {
         it.copy(keptText = "", soldText = "", step = HarvestStep.REPLANT, error = null)
     }
@@ -176,6 +297,7 @@ class HarvestWizardViewModel @Inject constructor(
         val previous = when (s.step) {
             HarvestStep.UNIT -> return false
             HarvestStep.QUANTITY -> HarvestStep.UNIT
+            HarvestStep.SANITY -> HarvestStep.QUANTITY
             HarvestStep.SPLIT -> HarvestStep.QUANTITY
             HarvestStep.REPLANT -> HarvestStep.SPLIT
             HarvestStep.REVIEW -> HarvestStep.REPLANT
@@ -197,24 +319,46 @@ class HarvestWizardViewModel @Inject constructor(
         }
         val (factorCenti, conversionSource) = conversion
         _state.update { it.copy(isSaving = true, error = null) }
+        val editingId = harvestId
         viewModelScope.launch {
             try {
-                harvestRepository.createLocal(
-                    fieldId = fieldId,
-                    harvestDate = Clock.System.now().toString(),
-                    quantityCenti = quantity,
-                    unit = unit,
-                    // Converted HERE, at entry, while the farmer is standing in
-                    // front of us and can still be asked. Not in a script in
-                    // December, when there is nobody left to ask.
-                    qtyKgCenti = YieldConversion.toKgCenti(quantity, factorCenti),
-                    conversionFactorCenti = factorCenti,
-                    conversionSource = conversionSource,
-                    keptCenti = s.keptText.takeIf { it.isNotBlank() }?.let(Quantity::parseToCenti),
-                    soldCenti = s.soldText.takeIf { it.isNotBlank() }?.let(Quantity::parseToCenti),
-                    replantIntent = intent,
-                    replantMonth = s.replantMonth,
-                )
+                // Converted HERE, at entry, while the farmer is standing in
+                // front of us and can still be asked. Not in a script in
+                // December, when there is nobody left to ask.
+                val qtyKgCenti = YieldConversion.toKgCenti(quantity, factorCenti)
+                val keptCenti = s.keptText.takeIf { it.isNotBlank() }?.let(Quantity::parseToCenti)
+                val soldCenti = s.soldText.takeIf { it.isNotBlank() }?.let(Quantity::parseToCenti)
+                if (editingId != null) {
+                    // Upsert by id. harvestDate is deliberately NOT rewritten —
+                    // correcting a quantity does not move when the harvest
+                    // happened, and the server's PATCH body has no date either.
+                    harvestRepository.updateLocal(
+                        id = editingId,
+                        quantityCenti = quantity,
+                        unit = unit,
+                        qtyKgCenti = qtyKgCenti,
+                        conversionFactorCenti = factorCenti,
+                        conversionSource = conversionSource,
+                        keptCenti = keptCenti,
+                        soldCenti = soldCenti,
+                        replantIntent = intent,
+                        replantMonth = s.replantMonth,
+                    )
+                } else {
+                    harvestRepository.createLocal(
+                        fieldId = fieldId,
+                        harvestDate = Clock.System.now().toString(),
+                        quantityCenti = quantity,
+                        unit = unit,
+                        qtyKgCenti = qtyKgCenti,
+                        conversionFactorCenti = factorCenti,
+                        conversionSource = conversionSource,
+                        keptCenti = keptCenti,
+                        soldCenti = soldCenti,
+                        replantIntent = intent,
+                        replantMonth = s.replantMonth,
+                    )
+                }
                 _state.update { it.copy(isSaving = false, saved = true) }
             } catch (e: CancellationException) {
                 throw e

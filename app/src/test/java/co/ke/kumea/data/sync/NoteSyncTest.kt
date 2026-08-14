@@ -44,6 +44,10 @@ class NoteSyncTest {
         override suspend fun getPendingSync(): List<NoteEntity> = pending
         override suspend fun getById(id: String): NoteEntity? =
             (pending + upserts).lastOrNull { it.id == id }
+        override suspend fun findBySource(sourceType: String, sourceId: String): NoteEntity? =
+            (pending + upserts).lastOrNull { it.sourceType == sourceType && it.sourceId == sourceId }
+        override suspend fun getByIds(ids: List<String>): List<NoteEntity> =
+            (pending + upserts).filter { it.id in ids }
         override suspend fun getLatestUpdatedAt(): String? = latest
         override suspend fun upsertAll(notes: List<NoteEntity>) { upsertAlls.add(notes) }
         override suspend fun upsert(note: NoteEntity) { upserts.add(note) }
@@ -54,10 +58,11 @@ class NoteSyncTest {
     }
 
     private class NoOpConflictDao : SyncConflictDao {
-        override suspend fun insert(conflict: SyncConflictEntity) {}
-        override suspend fun count404(entityId: String): Int = 0
+        override suspend fun count404(entityId: String): Int =
+            0
         override fun getTerminalRejections(): Flow<List<SyncConflictEntity>> = flowOf(emptyList())
         override suspend fun countTerminalRejections(): Int = 0
+        override suspend fun insert(conflict: SyncConflictEntity) {}
     }
 
     private fun noteResponse(amountCents: String?, updatedAt: String = "t") = NoteResponse(

@@ -22,6 +22,14 @@ import androidx.room.RoomDatabase
  * computed at all; and two new tables, farm_crops (the grouped multi-select,
  * with "interested" as a sales signal) and kumea_n_received (the KWAP-02 shim).
  * See MIGRATION_12_13 — the harvests half rewrites rows, not just shape.
+ * Version 14 (KWAP-03-V2): planting stops being a column and becomes a season
+ * record. New `plantings` table, farm-level, carrying the four attributes §2.4
+ * adds (crop, planted area, seed weight, variety, seed cost) plus trialRole,
+ * which moves off `fields`; `fields.plantedAt` is backfilled into it and then
+ * retired in place, the same no-drop pattern used for `useGps`. `notes` gains
+ * the device-only sourceType/sourceId pair that keeps a seed-cost purchase
+ * linked to the planting that wrote it, so "invested" cannot double-count.
+ * See MIGRATION_13_14.
  */
 @Database(
     entities = [
@@ -33,9 +41,10 @@ import androidx.room.RoomDatabase
         KumeaNReceivedEntity::class,
         NoteEntity::class,
         OrderEntity::class,
+        PlantingEntity::class,
         SyncConflictEntity::class,
     ],
-    version = 13,
+    version = 14,
     exportSchema = true,
 )
 abstract class KumeaDatabase : RoomDatabase() {
@@ -47,5 +56,6 @@ abstract class KumeaDatabase : RoomDatabase() {
     abstract fun kumeaNReceivedDao(): KumeaNReceivedDao
     abstract fun noteDao(): NoteDao
     abstract fun orderDao(): OrderDao
+    abstract fun plantingDao(): PlantingDao
     abstract fun syncConflictDao(): SyncConflictDao
 }

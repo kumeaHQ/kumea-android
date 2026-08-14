@@ -84,4 +84,31 @@ abstract class RepositoryModule {
     @Binds
     @IntoSet
     abstract fun bindKumeaNReceivedSyncable(repo: KumeaNReceivedRepository): SyncableRepository
+
+    // ── PlantingRepository — WRITTEN, DELIBERATELY NOT BOUND ─────────────────
+    //
+    // KWAP-03-V2 §2.3 adds `plantings`, and §4 asks for full push + pull. The
+    // repository has both. What does not exist is the other end: `kumea-api` at
+    // c83917f (main, deployed) has no Planting model, no controller and no DTO —
+    // the only planting-shaped thing on the server is `fields.plantedAt`.
+    //
+    // Binding this now would push at a route that returns 404, and 404 is NOT in
+    // the terminal set (only 403 and 409 are), so every planting a WAO records
+    // would sit at the head of the offline queue and re-send on every sync cycle
+    // for ever. That is the same failure the `cropType`/`acres`/`useGps` and
+    // `kept`/`sold` bugs caused, and the same reason KWAP-03 shipped
+    // `kumea_n_received` unbound until its server patch deployed.
+    //
+    // Plantings are device-only until then. Nothing is lost: the rows are in
+    // Room, they carry `pendingSync = true`, and the first successful push after
+    // this line is uncommented will send every one of them.
+    //
+    // 🔴 BEFORE UNCOMMENTING: diff PlantingCreateRequest against the server's
+    // real CreatePlantingDto by hand — every key AND the numeric wire types —
+    // then confirm the route with one real push. The DTO in this repo is a
+    // proposal, not a contract.
+    //
+    // @Binds
+    // @IntoSet
+    // abstract fun bindPlantingSyncable(repo: PlantingRepository): SyncableRepository
 }

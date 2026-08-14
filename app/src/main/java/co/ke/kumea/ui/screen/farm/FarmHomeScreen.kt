@@ -7,6 +7,7 @@ import androidx.compose.animation.slideInVertically
 import androidx.compose.animation.slideOutVertically
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
@@ -35,6 +36,9 @@ import co.ke.kumea.data.local.CostCategory
 import co.ke.kumea.data.local.FieldEntity
 import co.ke.kumea.data.local.HarvestEntity
 import co.ke.kumea.data.local.HarvestUnits
+import co.ke.kumea.data.local.PlantingEntity
+import co.ke.kumea.domain.model.Crops
+import co.ke.kumea.util.Area
 import co.ke.kumea.data.local.FarmEntity
 import co.ke.kumea.data.local.KumeaNReceivedEntity
 import co.ke.kumea.data.local.NoteEntity
@@ -56,6 +60,7 @@ import co.ke.kumea.util.Money
 import co.ke.kumea.util.Quantity
 import kotlinx.coroutines.delay
 import kotlinx.datetime.Instant
+import kotlinx.datetime.LocalDate
 import kotlinx.datetime.TimeZone
 import kotlinx.datetime.toLocalDateTime
 import kotlin.math.ceil
@@ -66,8 +71,12 @@ fun FarmHomeScreen(
     farmId: String,
     onBack: () -> Unit,
     onAddNote: () -> Unit,
-    onAddPlantingDate: (String) -> Unit,
-    onRecordHarvest: (String) -> Unit,
+    /** §2.7 — the activity log's own entry point, separate from the two ledgers. */
+    onAddObservation: () -> Unit,
+    /** Farm-level now — planting is an entity on Farm (§2.3). */
+    onAddPlanting: () -> Unit,
+    /** (fieldId, harvestId) — a null harvestId records a new one, else corrects it. */
+    onRecordHarvest: (String, String?) -> Unit,
     showSaveBeat: Boolean = false,
     onSaveBeatConsumed: () -> Unit = {},
     viewModel: FarmHomeViewModel = hiltViewModel(),
@@ -79,6 +88,7 @@ fun FarmHomeScreen(
     val errorMessage by viewModel.errorMessage.collectAsStateWithLifecycle()
     val primaryField by viewModel.primaryField.collectAsStateWithLifecycle()
     val latestHarvest by viewModel.latestHarvest.collectAsStateWithLifecycle()
+    val latestPlanting by viewModel.latestPlanting.collectAsStateWithLifecycle()
 
     val snackbarHostState = remember { SnackbarHostState() }
     var showKumeaNSheet by remember { mutableStateOf(false) }
@@ -157,7 +167,7 @@ fun FarmHomeScreen(
             // the season is actually made of, which is also exactly what the
             // impact report is computed from.
             if (field != null) {
-                VerbBar(onAddRecord = onAddNote)
+                VerbBar(onAddRecord = onAddNote, onAddObservation = onAddObservation)
             }
         },
         snackbarHost = { SnackbarHost(snackbarHostState) },
@@ -199,11 +209,37 @@ fun FarmHomeScreen(
                             farm = farm,
                             field = field,
                             harvest = latestHarvest,
+                            planting = latestPlanting,
                             received = kumeaNReceived,
                             hasFieldVisit = notes.isNotEmpty(),
-                            onAddPlanting = { field?.let { onAddPlantingDate(it.id) } },
-                            onAddHarvest = { field?.let { onRecordHarvest(it.id) } },
+                            onAddPlanting = onAddPlanting,
+                            onAddHarvest = { field?.let { onRecordHarvest(it.id, null) } },
                         )
+                    }
+
+                    // ── THE RECORD ITSELF (KWAP-03-V2 §2.1) ──────────────────
+                    //
+                    // This card existed all along and was called from nowhere —
+                    // orphaned in the KWAP-03 rewrite. That was the whole of the
+                    // "tick appears, no record" bug: the timeline said Harvest ✓
+                    // and the feed below it lists notes ONLY, so a farm with one
+                    // harvest and no notes read "no activity yet" underneath its
+                    // own tick.
+                    //
+                    // It renders from `latestHarvest` — the SAME flow the tick is
+                    // derived from — which is the rule this ticket exists to
+                    // write in, not just the fix.
+                    if (field != null && (latestHarvest != null || latestPlanting != null)) {
+                        item {
+                            SeasonRecordCard(
+                                field = field,
+                                harvest = latestHarvest,
+                                planting = latestPlanting,
+                                onEditHarvest = latestHarvest?.let { h ->
+                                    { onRecordHarvest(field.id, h.id) }
+                                },
+                            )
+                        }
                     }
 
                     // ZONE 3 — What Kumea N did. Visibly locked until harvest:
@@ -279,7 +315,7 @@ fun FarmHomeScreen(
  * add record. Leaf Wash tonal, equal thirds — every verb one tap away.
  */
 @Composable
-private fun VerbBar(onAddRecord: () -> Unit) {
+private fun VerbBar(onAddRecord: () -> Unit, onAddObservation: () -> Unit) {
     Surface(color = MaterialTheme.colorScheme.surface) {
         Column {
             HorizontalDivider(color = MaterialTheme.colorScheme.outline)
@@ -289,10 +325,21 @@ private fun VerbBar(onAddRecord: () -> Unit) {
                     .padding(horizontal = 12.dp, vertical = 10.dp),
                 horizontalArrangement = Arrangement.spacedBy(8.dp),
             ) {
+                // TWO ENTRY POINTS, because they are two different things
+                // (§2.6/§2.7). "Add record" is the two money ledgers; "Add
+                // observation" is the activity log, which carries no money. The
+                // split is what lets the Activity form drop its cost field
+                // without losing anywhere to record a field visit.
                 VerbButton(
                     label = stringResource(R.string.verb_add_record),
                     iconRes = R.drawable.ic_record,
                     onClick = onAddRecord,
+                    modifier = Modifier.weight(1f),
+                )
+                VerbButton(
+                    label = stringResource(R.string.verb_add_observation),
+                    iconRes = R.drawable.ic_hoe,
+                    onClick = onAddObservation,
                     modifier = Modifier.weight(1f),
                 )
             }
@@ -409,12 +456,24 @@ private fun KumeaNZone(
  *
  * The planting and harvest wizards are NOT rebuilt here. `onAddPlanting` and
  * `onAddHarvest` are the same navigation calls the verb bar used to make.
+ *
+ * ── 🔴 THE TICK AND THE RECORD COME FROM THE SAME QUERY (KWAP-03-V2 §2.1) ────
+ *
+ * Every row below derives `done` and `detail` from ONE read: Received from
+ * `received`, Planted from `field.plantedAt`, Harvest from `harvest`. Keep it
+ * that way. If completion state is ever derived from a different source than
+ * the thing it summarises, the two disagree, and the farmer is shown a ✓ next
+ * to a record they cannot find — which is precisely the trust-breaking bug this
+ * ticket was opened to fix. (That bug was not in this composable: the tick was
+ * right and the record simply had no renderer. The rule is what stops the next
+ * one, which would be.)
  */
 @Composable
 private fun SeasonZone(
     farm: FarmEntity?,
     field: FieldEntity?,
     harvest: HarvestEntity?,
+    planting: PlantingEntity?,
     received: List<KumeaNReceivedEntity>,
     hasFieldVisit: Boolean,
     onAddPlanting: () -> Unit,
@@ -441,13 +500,13 @@ private fun SeasonZone(
                 done = received.isNotEmpty(),
                 detail = received.firstOrNull()?.occurredAt?.let(::shortDate),
             )
+            // Reads `plantings`, not the retired `fields.plantedAt`. Tick and
+            // detail both come from `planting` — same query, §2.1's rule.
             TimelineRow(
                 label = stringResource(R.string.season_planted),
-                done = field?.plantedAt != null,
-                detail = field?.plantedAt?.let(::shortDate),
-                actionLabel = if (field != null && field.plantedAt == null) {
-                    stringResource(R.string.season_add)
-                } else null,
+                done = planting != null,
+                detail = planting?.plantedOn?.let(::shortLocalDate),
+                actionLabel = if (planting == null) stringResource(R.string.season_add) else null,
                 onAction = onAddPlanting,
             )
             // Officer observations arrive as notes; there is no button, because
@@ -541,6 +600,15 @@ private fun ImpactZone(hasHarvest: Boolean) {
         }
     }
 }
+
+/**
+ * "13 Aug" from a plain "YYYY-MM-DD". `plantings.plantedOn` is a DATE, not an
+ * instant — running it through [shortDate] would fail to parse and render blank.
+ */
+private fun shortLocalDate(iso: String): String = runCatching {
+    val date = LocalDate.parse(iso.take(10))
+    "${date.dayOfMonth} ${date.month.name.lowercase().replaceFirstChar { it.uppercase() }.take(3)}"
+}.getOrDefault("")
 
 /** "13 Aug" from a UTC ISO-8601 instant, in EAT. */
 private fun shortDate(iso: String): String = runCatching {
@@ -712,8 +780,20 @@ private fun cropLabel(type: String): String = when (type) {
  * NEVER "Imethibitishwa" — nothing verifies farmer-entered data.
  */
 @Composable
-private fun SeasonRecordCard(field: FieldEntity, harvest: HarvestEntity?) {
-    PaperCard(modifier = Modifier.fillMaxWidth()) {
+private fun SeasonRecordCard(
+    field: FieldEntity,
+    harvest: HarvestEntity?,
+    planting: PlantingEntity?,
+    onEditHarvest: (() -> Unit)? = null,
+) {
+    PaperCard(
+        modifier = Modifier
+            .fillMaxWidth()
+            .then(
+                if (onEditHarvest != null) Modifier.clickable(onClick = onEditHarvest)
+                else Modifier,
+            ),
+    ) {
         Box(
             modifier = Modifier
                 .fillMaxWidth()
@@ -739,10 +819,20 @@ private fun SeasonRecordCard(field: FieldEntity, harvest: HarvestEntity?) {
                 )
             }
 
-            field.plantedAt?.let {
+            planting?.let { p ->
                 FactRow(
                     iconRes = R.drawable.ic_calendar,
-                    text = stringResource(R.string.proof_planted, it.take(10)),
+                    text = stringResource(R.string.proof_planted, p.plantedOn.take(10)),
+                )
+                // Planted area, not farm area — the distinction §2.4 exists for,
+                // surfaced so the farmer can see the number the report divides by.
+                FactRow(
+                    iconRes = R.drawable.ic_sprout,
+                    text = stringResource(
+                        R.string.proof_planted_detail,
+                        Crops.label(p.crop) ?: p.crop,
+                        Area.formatCenti(p.plantedAreaCenti),
+                    ),
                 )
             }
             harvest?.let { h ->
@@ -752,13 +842,34 @@ private fun SeasonRecordCard(field: FieldEntity, harvest: HarvestEntity?) {
                     HarvestUnits.GOROGORO -> stringResource(R.string.unit_gorogoro)
                     else -> h.unit
                 }
+                // §2.1's row: quantity in the farmer's own unit, canonical kg in
+                // parentheses, date. The kg is what the impact report actually
+                // sums, so showing it here is also the farmer's chance to say
+                // "that's not right" while they still remember the harvest.
+                // Suppressed when the unit IS kg — "720 kg (720 kg)" reads as a
+                // bug — and when the conversion is UNKNOWN, where a pre-v13 bags
+                // row has no honest kilogram to show.
+                val canonicalKg = h.qtyKgCenti
+                    .takeIf { it > 0 && h.unit != HarvestUnits.KG }
+                    ?.let(Quantity::formatCenti)
                 FactRow(
                     iconRes = R.drawable.ic_scale,
-                    text = stringResource(
-                        R.string.proof_harvested,
-                        Quantity.formatCenti(h.quantityCenti),
-                        unitLabel,
-                    ),
+                    text = if (canonicalKg != null) {
+                        stringResource(
+                            R.string.proof_harvested_canonical,
+                            Quantity.formatCenti(h.quantityCenti),
+                            unitLabel,
+                            canonicalKg,
+                            shortDate(h.harvestDate),
+                        )
+                    } else {
+                        stringResource(
+                            R.string.proof_harvested_dated,
+                            Quantity.formatCenti(h.quantityCenti),
+                            unitLabel,
+                            shortDate(h.harvestDate),
+                        )
+                    },
                 )
                 when (h.replantIntent) {
                     ReplantIntent.YES -> {
@@ -791,6 +902,17 @@ private fun SeasonRecordCard(field: FieldEntity, harvest: HarvestEntity?) {
                 horizontalArrangement = Arrangement.End,
                 verticalAlignment = Alignment.CenterVertically,
             ) {
+                // The card is tappable but a card does not look tappable, and a
+                // farmer who thinks a wrong figure is permanent will not correct
+                // it. Says so only when there is actually something to edit.
+                if (onEditHarvest != null) {
+                    Text(
+                        stringResource(R.string.record_tap_to_edit),
+                        style = MaterialTheme.typography.labelSmall,
+                        color = InkMuted,
+                        modifier = Modifier.weight(1f),
+                    )
+                }
                 Icon(
                     painter = painterResource(
                         if (synced) R.drawable.ic_cloud_check else R.drawable.ic_phone_saved,

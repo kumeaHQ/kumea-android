@@ -19,9 +19,10 @@ import co.ke.kumea.ui.screen.farm.FarmCreateScreen
 import co.ke.kumea.ui.screen.farm.FarmHomeScreen
 import co.ke.kumea.ui.screen.farm.FarmListScreen
 import co.ke.kumea.ui.screen.field.HarvestWizardScreen
-import co.ke.kumea.ui.screen.field.PlantingDateScreen
+import co.ke.kumea.ui.screen.field.PlantingScreen
 import co.ke.kumea.ui.screen.home.LandingScreen
 import co.ke.kumea.ui.screen.ledger.LedgerScreen
+import co.ke.kumea.ui.screen.note.MODE_OBSERVATION
 import co.ke.kumea.ui.screen.note.NoteCreateScreen
 import co.ke.kumea.ui.screen.officer.FarmerDirectoryScreen
 import co.ke.kumea.ui.screen.officer.OfficerHomeScreen
@@ -53,23 +54,41 @@ object Routes {
      * record what they were given.
      */
     const val RECORD_KUMEA_N = "farms/{farmId}/kumea-n"
-    const val NOTE_CREATE = "farms/{farmId}/notes/create"
+    /**
+     * `mode` selects the form: absent/anything = the two money ledgers,
+     * "observation" = the no-money activity form (KWAP-03-V2 §2.6/§2.7).
+     */
+    const val NOTE_CREATE = "farms/{farmId}/notes/create?mode={mode}"
     const val LEDGER = "farms/{farmId}/ledger"
     const val ORDER_CREATE = "orders/create?farmId={farmId}"
-    const val PLANTING_DATE = "fields/{fieldId}/planting-date"
-    const val HARVEST = "fields/{fieldId}/harvest"
+    /**
+     * FARM-level from KWAP-03-V2 §2.3 — planting is an entity on Farm now, and
+     * §2.2 removes Field from what the farmer sees. Was
+     * `fields/{fieldId}/planting-date`.
+     */
+    const val PLANTING = "farms/{farmId}/planting"
+    /**
+     * `harvestId` optional: absent records a new harvest, present re-opens that
+     * record for correction (KWAP-03-V2 §2.1). One route and one wizard, because
+     * an edit screen would be the same five questions maintained twice.
+     */
+    const val HARVEST = "fields/{fieldId}/harvest?harvestId={harvestId}"
 
     fun otpEntry(phone: String) = "otp_entry/${Uri.encode(phone)}"
     fun pinSetup(registrationToken: String) = "pin_setup/${Uri.encode(registrationToken)}"
     fun pinEntry(phone: String) = "pin_entry/${Uri.encode(phone)}"
     fun farmHome(farmId: String) = "farms/${Uri.encode(farmId)}"
-    fun noteCreate(farmId: String) = "farms/${Uri.encode(farmId)}/notes/create"
+    fun noteCreate(farmId: String, observation: Boolean = false) =
+        "farms/${Uri.encode(farmId)}/notes/create" +
+            if (observation) "?mode=$MODE_OBSERVATION" else ""
     fun recordKumeaN(farmId: String) = "farms/${Uri.encode(farmId)}/kumea-n"
     fun ledger(farmId: String) = "farms/${Uri.encode(farmId)}/ledger"
     fun orderCreate(farmId: String?) =
         if (farmId != null) "orders/create?farmId=${Uri.encode(farmId)}" else "orders/create"
-    fun plantingDate(fieldId: String) = "fields/${Uri.encode(fieldId)}/planting-date"
-    fun harvest(fieldId: String) = "fields/${Uri.encode(fieldId)}/harvest"
+    fun planting(farmId: String) = "farms/${Uri.encode(farmId)}/planting"
+    fun harvest(fieldId: String, harvestId: String? = null) =
+        "fields/${Uri.encode(fieldId)}/harvest" +
+            if (harvestId != null) "?harvestId=${Uri.encode(harvestId)}" else ""
 }
 
 @Composable
@@ -153,6 +172,9 @@ fun KumeaNavHost(
                 farmId = farmId,
                 onBack = { navController.popBackStack() },
                 onAddNote = { navController.navigate(Routes.noteCreate(farmId)) },
+                onAddObservation = {
+                    navController.navigate(Routes.noteCreate(farmId, observation = true))
+                },
                 // onOpenLedger is gone: the money line-card that carried it off
                 // the farmer's farm page is deleted (KWAP-03 §5.4).
                 //
@@ -162,17 +184,19 @@ fun KumeaNavHost(
                 // the agent persona — but nothing navigates to it right now.
                 // Giving the agent surface its own link is the agent-home work,
                 // not this ticket's; flagged rather than quietly deleted.
-                onAddPlantingDate = { fieldId -> navController.navigate(Routes.plantingDate(fieldId)) },
-                onRecordHarvest = { fieldId -> navController.navigate(Routes.harvest(fieldId)) },
+                onAddPlanting = { navController.navigate(Routes.planting(farmId)) },
+                onRecordHarvest = { fieldId, harvestId ->
+                    navController.navigate(Routes.harvest(fieldId, harvestId))
+                },
                 showSaveBeat = showSaveBeat,
                 onSaveBeatConsumed = { backStackEntry.savedStateHandle[SAVE_BEAT_KEY] = false },
             )
         }
         composable(
-            Routes.PLANTING_DATE,
-            arguments = listOf(navArgument("fieldId") { type = NavType.StringType }),
+            Routes.PLANTING,
+            arguments = listOf(navArgument("farmId") { type = NavType.StringType }),
         ) {
-            PlantingDateScreen(
+            PlantingScreen(
                 onDone = {
                     navController.previousBackStackEntry?.savedStateHandle?.set(SAVE_BEAT_KEY, true)
                     navController.popBackStack()
@@ -182,7 +206,14 @@ fun KumeaNavHost(
         }
         composable(
             Routes.HARVEST,
-            arguments = listOf(navArgument("fieldId") { type = NavType.StringType }),
+            arguments = listOf(
+                navArgument("fieldId") { type = NavType.StringType },
+                navArgument("harvestId") {
+                    type = NavType.StringType
+                    nullable = true
+                    defaultValue = null
+                },
+            ),
         ) {
             HarvestWizardScreen(
                 onDone = {
@@ -262,7 +293,14 @@ fun KumeaNavHost(
         }
         composable(
             Routes.NOTE_CREATE,
-            arguments = listOf(navArgument("farmId") { type = NavType.StringType }),
+            arguments = listOf(
+                navArgument("farmId") { type = NavType.StringType },
+                navArgument("mode") {
+                    type = NavType.StringType
+                    nullable = true
+                    defaultValue = null
+                },
+            ),
         ) {
             NoteCreateScreen(
                 onBack = { navController.popBackStack() },

@@ -161,15 +161,48 @@
     <!-- Build-2: planting date -->
     <string name="planting_title">Planting date</string>
     <string name="planting_question">When did you plant?</string>
-    <string name="planting_today">Today</string>
-    <string name="planting_yesterday">Yesterday</string>
-    <string name="planting_pick_day">Pick another day</string>
-    <string name="planting_helper">For this field only</string>
+
+    <!-- KWAP-03-V2 §2.4: the guided planting series. -->
+    <string name="skip">Skip</string>
+    <string name="acres_value">%s acres</string>
+    <string name="kg_value">%s kg</string>
+    <string name="kes_value">KES %s</string>
+    <string name="planting_which_crop">What did you plant?</string>
+    <string name="planting_crop_unknown_hint">We don\'t have your crops on record yet — pick what you planted.</string>
+    <string name="planting_area_question">How much of your shamba did you plant?</string>
+    <string name="planting_area_hint">This can be less than your whole shamba.</string>
+    <string name="planting_area_label">Acres planted</string>
+    <string name="planting_seed_kg_question">How many kg of seed?</string>
+    <string name="planting_seed_kg_label">Seed (kg)</string>
+    <string name="planting_variety_question">What variety?</string>
+    <string name="planting_variety_label">Variety</string>
+    <string name="planting_seed_cost_question">What did the seed cost?</string>
+    <string name="planting_seed_cost_label">Cost (KES)</string>
+    <string name="planting_seed_cost_linked">We\'ll add this to your purchases, so don\'t enter it again.</string>
+    <string name="planting_review_title">Check your planting</string>
+    <string name="planting_review_date">Planted</string>
+    <string name="planting_review_crop">Crop</string>
+    <string name="planting_review_area">Area</string>
+    <string name="planting_review_seed">Seed</string>
+    <string name="planting_review_variety">Variety</string>
+    <string name="planting_review_seed_cost">Seed cost</string>
+    <string name="planting_trial_role">Trial plot</string>
+    <string name="trial_none">Not a trial</string>
+    <string name="trial_treated">Got Kumea N</string>
+    <string name="trial_control">Control plot</string>
     <string name="planting_save">Save planting date</string>
     <string name="planting_action">Planting date</string>
 
     <!-- Build-2: harvest wizard -->
     <string name="harvest_title">Record harvest</string>
+    <string name="harvest_title_edit">Change harvest</string>
+    <!-- KWAP-03-V2 §2.8: the one cross-check, on the one number that decides
+         the impact report. Divided by PLANTED area, never farm area. -->
+    <string name="harvest_sanity_title">Let\'s check that</string>
+    <string name="harvest_sanity_body">That\'s about %1$s kg from %2$s acres — %3$s kg per acre.</string>
+    <string name="harvest_sanity_question">Does that sound right?</string>
+    <string name="harvest_sanity_yes">Yes</string>
+    <string name="harvest_sanity_change">Change</string>
     <string name="harvest_action">Record harvest</string>
     <string name="harvest_how_much">How much did you harvest?</string>
     <string name="harvest_quantity">Amount</string>
@@ -195,7 +228,12 @@
     <!-- Build-2: proof card -->
     <string name="season_record">Season record</string>
     <string name="proof_planted">Planted: %s</string>
+    <string name="proof_planted_detail">%1$s on %2$s acres</string>
     <string name="proof_harvested">Harvested: %1$s %2$s</string>
+    <!-- KWAP-03-V2 §2.1: the farmer's own unit, canonical kg, then the date. -->
+    <string name="proof_harvested_canonical">Harvested: %1$s %2$s (%3$s kg) · %4$s</string>
+    <string name="proof_harvested_dated">Harvested: %1$s %2$s · %3$s</string>
+    <string name="record_tap_to_edit">Tap to change</string>
     <string name="proof_replanting">Planting again: %s</string>
     <string name="proof_replanting_yes">Planting again next season</string>
     <string name="proof_not_replanting">Not planting next season</string>
@@ -227,6 +265,9 @@
 
     <!-- Build-3: verbs & FarmHome -->
     <string name="verb_add_record">Add record</string>
+    <!-- KWAP-03-V2 §2.7: observations get their own verb. -->
+    <string name="verb_add_observation">Add observation</string>
+    <string name="note_observation_title">Add observation</string>
     <string name="shughuli">Activity log</string>
     <string name="kumea_n_link_row">Kumea N for your beans</string>
     <string name="no_shughuli_yet">Nothing recorded here yet.</string>
@@ -276,8 +317,6 @@
     <string name="amount_hint">Digits only, up to 2 decimals</string>
     <string name="note_label">Note</string>
     <string name="note_optional">Note (optional)</string>
-    <string name="field_label">Field</string>
-    <string name="no_fields_hint">No fields — pull to refresh</string>
     <string name="date_label">Date</string>
     <string name="save">Save</string>
 
@@ -295,7 +334,7 @@
     <!-- Build-3: ledger -->
     <string name="ledger_revenue">Revenue</string>
     <string name="ledger_costs">Costs</string>
-    <string name="ledger_by_field">By field</string>
+    <string name="ledger_by_field">By plot</string>
     <string name="ledger_by_category">Costs by category</string>
     <string name="break_even">Break-even</string>
     <string name="ledger_load_failed">Couldn\'t load your money view. Check your connection and try again.</string>

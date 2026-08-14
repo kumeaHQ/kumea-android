@@ -32,6 +32,9 @@ import co.ke.kumea.data.remote.dto.HarvestResponse
 import co.ke.kumea.data.remote.dto.HarvestUpdateRequest
 import co.ke.kumea.data.remote.dto.KumeaNReceivedCreateRequest
 import co.ke.kumea.data.remote.dto.KumeaNReceivedResponse
+import co.ke.kumea.data.remote.dto.PlantingCreateRequest
+import co.ke.kumea.data.remote.dto.PlantingResponse
+import co.ke.kumea.data.remote.dto.PlantingUpdateRequest
 import co.ke.kumea.data.remote.dto.UserProfile
 import co.ke.kumea.data.remote.dto.VerifyOtpRequest
 import co.ke.kumea.data.remote.dto.VerifyOtpResponse
@@ -202,6 +205,31 @@ interface KumeaApi {
 
     @DELETE("kumea-n-received/{id}")
     suspend fun deleteKumeaNReceived(@Path("id") id: String): Response<Unit>
+
+    // ---- Plantings (KWAP-03-V2 §2.3) ----
+    //
+    // ⚠️ THESE ROUTES DO NOT EXIST ON THE SERVER YET. Declared so the repository
+    // is complete and reviewable in one commit, and unreachable in practice
+    // because PlantingRepository is not bound into Set<SyncableRepository>.
+    // See PlantingDtos.kt. Diff the bodies against the real DTO before binding.
+
+    @GET("plantings")
+    suspend fun getPlantings(
+        @Query("since") since: String? = null,
+        @Query("includeDeleted") includeDeleted: Boolean = false,
+    ): List<PlantingResponse>
+
+    @POST("plantings")
+    suspend fun createPlanting(@Body planting: PlantingCreateRequest): Response<PlantingResponse>
+
+    @PATCH("plantings/{id}")
+    suspend fun updatePlanting(
+        @Path("id") id: String,
+        @Body planting: PlantingUpdateRequest,
+    ): Response<PlantingResponse>
+
+    @DELETE("plantings/{id}")
+    suspend fun deletePlanting(@Path("id") id: String): Response<Unit>
 
     // ---- Notes ----
     // Flat /notes resource, identical shape to /fields. fieldId travels in the

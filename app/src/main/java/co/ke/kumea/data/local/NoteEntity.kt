@@ -49,6 +49,35 @@ data class NoteEntity(
     // Optional cost label (Ticket 2.1). Defaults to null — a note may carry no
     // category, and the sign is still derived from `type`, never from this.
     val costCategory: CostCategory? = null,
+    /**
+     * ── THE LINKED-RECORD PAIR (KWAP-03-V2 §2.5). DEVICE-ONLY. ───────────────
+     *
+     * [sourceType] is a [NoteSource] constant and [sourceId] the id of the row
+     * that generated this note. Set together or not at all: a note with one and
+     * not the other is meaningless.
+     *
+     * They exist so seed cost can be captured ONCE (decision 6). The planting
+     * flow asks "what did the seed cost?" and writes a PURCHASE note; without a
+     * link back, a farmer who doesn't realise the app already logged it adds
+     * seed again by hand and "invested" silently doubles. With it, the ledger
+     * renders the row read-only and taps through to the planting.
+     *
+     * 🔴 NOT ON THE WIRE, and this is not an oversight. The server's
+     * `CreateNoteDto` whitelists id/fieldId/type/body/amountCents/costCategory/
+     * occurredAt and runs `ValidationPipe({ forbidNonWhitelisted: true })` — two
+     * extra keys would be a 400, and `NoteRepository.pushPending()` treats 400
+     * as retryable, so every seed-cost note would sit at the head of the offline
+     * queue for ever. That is the KWAP-01 `cropType`/`acres`/`useGps` bug and the
+     * `kept`/`sold` bug, which is the rule CLAUDE.md states plainly: never add a
+     * client field the server does not already accept.
+     *
+     * Consequence, handled in `NoteRepository.pullSince()`: the server cannot
+     * return these, so a pull carries them forward from the local row instead of
+     * writing null. Losing the link would un-hide the row in the ledger and
+     * re-open the double-count.
+     */
+    val sourceType: String? = null,
+    val sourceId: String? = null,
     val occurredAt: String,
     val createdAt: String,
     val updatedAt: String,
@@ -58,9 +87,28 @@ data class NoteEntity(
 )
 
 enum class NoteType {
+    /**
+     * An observation. CARRIES NO MONEY from KWAP-03-V2 §2.7 onward — nodulation,
+     * vigour, a WAO's field visit. The two ledgers are PURCHASE and SALE; the
+     * activity log is not a ledger.
+     *
+     * The value STAYS in this enum (decision 9): dropping it would strand every
+     * existing ACTIVITY row and force a data-rewriting migration of the kind
+     * MIGRATION_11_12 had to do for `BIOFIX`. Rows written before the rule that
+     * still carry an amount keep rendering; the repository just refuses new ones.
+     */
     ACTIVITY,
     PURCHASE,
     SALE,
+}
+
+/**
+ * What generated a note, for [NoteEntity.sourceType]. Device-only, like the
+ * columns themselves. A note with no source was typed by a human.
+ */
+object NoteSource {
+    /** Written by the planting flow's seed-cost question (§2.5). */
+    const val PLANTING = "planting"
 }
 
 /**

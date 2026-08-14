@@ -38,6 +38,9 @@ class FieldRepository @Inject constructor(
     /** Observe all active fields (live, via Room Flow). */
     fun getAllActive(): Flow<List<FieldEntity>> = fieldDao.getAllActive()
 
+    /** One field by id — the harvest wizard's route from fieldId back to its farm. */
+    suspend fun getById(id: String): FieldEntity? = fieldDao.getById(id)
+
     /** Observe active fields for a single farm. */
     fun getActiveByFarm(farmId: String): Flow<List<FieldEntity>> = fieldDao.getActiveByFarm(farmId)
 
@@ -46,7 +49,21 @@ class FieldRepository @Inject constructor(
      * caller already validated/normalised — it is stored verbatim, never parsed
      * to a number. Returns the generated UUID.
      */
+    /**
+     * ONE FIELD PER FARM (KWAP-03-V2 §2.2).
+     *
+     * Returns the existing field's id instead of creating a second. Every farm
+     * has exactly one auto-created Field today, and that 1:1 mapping is the only
+     * reason the Field→Farm merge — deferred to its own post-season ticket —
+     * stays cheap. A second field anywhere makes it an N:1 merge with a rule
+     * nobody has written.
+     *
+     * Idempotent rather than throwing, because both callers (farm create, and
+     * the note form's lazy fallback) genuinely want "the field for this farm"
+     * and an exception there would block a save the farmer is entitled to.
+     */
     suspend fun createLocal(farmId: String, name: String, acres: String, cropType: String?): String {
+        fieldDao.getFirstActiveForFarm(farmId)?.let { return it.id }
         val now = Clock.System.now().toString()
         val id = UUID.randomUUID().toString()
         val field = FieldEntity(

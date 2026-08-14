@@ -47,10 +47,32 @@ enum class PurchaseItem(val category: CostCategory) {
     OTHER(CostCategory.OTHER),
 }
 
+/**
+ * WHICH FORM THIS IS (KWAP-03-V2 §2.6 / §2.7).
+ *
+ * The single "Add record" screen with a three-way type chip is split in two,
+ * because it was asking a farmer to classify before it asked them anything they
+ * knew. The two ledgers are money; an observation is not a ledger entry and now
+ * has its own entry point.
+ */
+enum class NoteMode {
+    /** The two ledgers: PURCHASE (money out, −, red) and SALE (money in, +, green). */
+    MONEY,
+
+    /**
+     * An observation. No amount field exists in this mode at all — nodulation,
+     * vigour, a WAO's visit. This is where the mid-season research evidence
+     * lives, and it is the thing the impact report leans on to show Kumea N was
+     * working DURING the season rather than only at harvest.
+     */
+    OBSERVATION,
+}
+
 data class NoteFormState(
+    val mode: NoteMode = NoteMode.MONEY,
     val fields: List<FieldOption> = emptyList(),
     val selectedFieldId: String? = null,
-    val type: NoteType = NoteType.ACTIVITY,
+    val type: NoteType = NoteType.PURCHASE,
     val body: String = "",
     val amount: String = "",
     val purchaseItem: PurchaseItem? = null,
@@ -58,8 +80,11 @@ data class NoteFormState(
     val isSaving: Boolean = false,
     val error: String? = null,
 ) {
-    /** ACTIVITY may omit a cost; PURCHASE and SALE must carry an amount. */
-    val amountRequired: Boolean get() = type != NoteType.ACTIVITY
+    /** The two money types, in ledger order. Never includes ACTIVITY (§2.6). */
+    val moneyTypes: List<NoteType> get() = listOf(NoteType.PURCHASE, NoteType.SALE)
+
+    /** Money always carries an amount now; an observation has no amount field. */
+    val amountRequired: Boolean get() = mode == NoteMode.MONEY
 
     /** Live, float-free preview of what the typed amount parses to (or null). */
     val parsedPreview: Long? get() = if (amount.isBlank()) null else Money.parseToCents(amount)
@@ -77,7 +102,17 @@ class NoteDetailViewModel @Inject constructor(
         "NoteDetailViewModel requires a farmId nav argument"
     }
 
-    private val _uiState = MutableStateFlow(NoteFormState())
+    /** "observation" opens the no-money form; anything else is the two ledgers. */
+    private val mode: NoteMode =
+        if (savedStateHandle.get<String>("mode") == MODE_OBSERVATION) NoteMode.OBSERVATION
+        else NoteMode.MONEY
+
+    private val _uiState = MutableStateFlow(
+        NoteFormState(
+            mode = mode,
+            type = if (mode == NoteMode.OBSERVATION) NoteType.ACTIVITY else NoteType.PURCHASE,
+        )
+    )
     val uiState: StateFlow<NoteFormState> = _uiState.asStateFlow()
 
     init {
@@ -98,9 +133,12 @@ class NoteDetailViewModel @Inject constructor(
 
     fun onFieldSelected(fieldId: String) = _uiState.update { it.copy(selectedFieldId = fieldId) }
     fun onTypeChange(type: NoteType) = _uiState.update {
+        // ACTIVITY is unreachable from the money form and the only type in the
+        // observation form, so a type change is always PURCHASE ↔ SALE.
+        if (it.mode == NoteMode.OBSERVATION) it
         // Leaving PURCHASE clears the picked item — only a purchase carries one.
-        if (type == NoteType.PURCHASE) it.copy(type = type)
-        else it.copy(type = type, purchaseItem = null)
+        else if (type == NoteType.PURCHASE) it.copy(type = type, error = null)
+        else it.copy(type = type, purchaseItem = null, error = null)
     }
     fun onBodyChange(body: String) = _uiState.update { it.copy(body = body) }
     fun onAmountChange(amount: String) = _uiState.update { it.copy(amount = amount) }
@@ -130,12 +168,15 @@ class NoteDetailViewModel @Inject constructor(
         // Money: integer-only parse (never Double). Required for PURCHASE/SALE,
         // optional for ACTIVITY. A non-blank but unparseable amount is an error.
         val amountCents: Long?
-        if (state.amount.isBlank()) {
-            if (state.amountRequired) {
-                _uiState.update { it.copy(error = "${state.type.label()} needs an amount") }
-                return
-            }
+        if (state.mode == NoteMode.OBSERVATION) {
+            // §2.7: an observation carries no money, so there is nothing to
+            // parse. NoteRepository.createLocal enforces the same rule — the
+            // form is not the only caller, and a rule kept only in a composable
+            // is a rule one screen keeps.
             amountCents = null
+        } else if (state.amount.isBlank()) {
+            _uiState.update { it.copy(error = "${state.type.label()} needs an amount") }
+            return
         } else {
             val parsed = Money.parseToCents(state.amount)
             if (parsed == null) {
@@ -187,3 +228,6 @@ class NoteDetailViewModel @Inject constructor(
 }
 
 fun NoteType.label(): String = name.lowercase().replaceFirstChar { it.uppercase() }
+
+/** Nav-arg value selecting the observation form. */
+const val MODE_OBSERVATION = "observation"

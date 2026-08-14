@@ -8,11 +8,13 @@ import co.ke.kumea.data.local.FieldEntity
 import co.ke.kumea.data.local.HarvestEntity
 import co.ke.kumea.data.local.KumeaNReceivedEntity
 import co.ke.kumea.data.local.NoteEntity
+import co.ke.kumea.data.local.PlantingEntity
 import co.ke.kumea.data.repository.FarmRepository
 import co.ke.kumea.data.repository.FieldRepository
 import co.ke.kumea.data.repository.HarvestRepository
 import co.ke.kumea.data.repository.KumeaNReceivedRepository
 import co.ke.kumea.data.repository.NoteRepository
+import co.ke.kumea.data.repository.PlantingRepository
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.ExperimentalCoroutinesApi
@@ -50,6 +52,7 @@ class FarmHomeViewModel @Inject constructor(
     private val harvestRepository: HarvestRepository,
     private val noteRepository: NoteRepository,
     private val kumeaNReceivedRepository: KumeaNReceivedRepository,
+    private val plantingRepository: PlantingRepository,
 ) : ViewModel() {
 
     private val _ui = MutableStateFlow(FarmHomeUiState())
@@ -66,6 +69,15 @@ class FarmHomeViewModel @Inject constructor(
 
     private val _latestHarvest = MutableStateFlow<HarvestEntity?>(null)
     val latestHarvest: StateFlow<HarvestEntity?> = _latestHarvest.asStateFlow()
+
+    /**
+     * The season's planting (KWAP-03-V2 §2.3). Replaces reading
+     * `fields.plantedAt`, which is retired in place — the Planted timeline row
+     * and the season record both derive from THIS flow now, which keeps them on
+     * the same read as their tick (§2.1's rule).
+     */
+    private val _latestPlanting = MutableStateFlow<PlantingEntity?>(null)
+    val latestPlanting: StateFlow<PlantingEntity?> = _latestPlanting.asStateFlow()
 
     /** Zone 1: what this farmer actually received (KWAP-03 §7). */
     private val _kumeaNReceived = MutableStateFlow<List<KumeaNReceivedEntity>>(emptyList())
@@ -100,6 +112,11 @@ class FarmHomeViewModel @Inject constructor(
         viewModelScope.launch {
             fieldRepository.getActiveByFarm(farmId).collect { fields ->
                 _primaryField.value = fields.firstOrNull()
+            }
+        }
+        viewModelScope.launch {
+            plantingRepository.getActiveByFarm(farmId).collect { plantings ->
+                _latestPlanting.value = plantings.firstOrNull()
             }
         }
         viewModelScope.launch {

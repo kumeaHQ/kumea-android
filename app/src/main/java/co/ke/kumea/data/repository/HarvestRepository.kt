@@ -39,6 +39,9 @@ class HarvestRepository @Inject constructor(
     fun getActiveByField(fieldId: String): Flow<List<HarvestEntity>> =
         harvestDao.getActiveByField(fieldId)
 
+    /** One active harvest — the wizard's read when re-opened in edit mode. */
+    suspend fun getById(id: String): HarvestEntity? = harvestDao.getById(id)
+
     /** Atomic single-record save at the end of the wizard. Returns the UUID. */
     suspend fun createLocal(
         fieldId: String,
@@ -88,13 +91,63 @@ class HarvestRepository @Inject constructor(
         return id
     }
 
+    /**
+     * Edit a harvest IN PLACE (KWAP-03-V2 §2.1).
+     *
+     * The season record is tappable now, and the tap re-opens this same wizard.
+     * Upsert by id is what makes that safe: a farmer correcting "8 bags" to
+     * "9 bags" must not leave two harvests behind, because the impact report
+     * SUMS them and would read 17.
+     */
+    suspend fun updateLocal(
+        id: String,
+        quantityCenti: Long,
+        unit: String,
+        qtyKgCenti: Long,
+        conversionFactorCenti: Long,
+        conversionSource: String,
+        keptCenti: Long?,
+        soldCenti: Long?,
+        replantIntent: String,
+        replantMonth: String?,
+    ) {
+        require(quantityCenti > 0) { "quantity must be positive" }
+        require(qtyKgCenti > 0) { "harvest needs canonical kilograms — see KWAP-03 §4.4" }
+        require(conversionFactorCenti > 0) { "a conversion factor must be recorded, not assumed later" }
+        val existing = harvestDao.getById(id) ?: return
+        val now = Clock.System.now().toString()
+        harvestDao.upsert(
+            existing.copy(
+                quantityCenti = quantityCenti,
+                unit = unit,
+                qtyKgCenti = qtyKgCenti,
+                conversionFactorCenti = conversionFactorCenti,
+                conversionSource = conversionSource,
+                keptCenti = keptCenti,
+                soldCenti = soldCenti,
+                replantIntent = replantIntent,
+                replantMonth = replantMonth,
+                updatedAt = now,
+                pendingSync = true,
+                // A row the server has never seen stays a CREATE. Flipping it to
+                // UPDATE would PATCH an id that does not exist server-side — a
+                // 404, which is not terminal here, so it would retry for ever
+                // at the head of the queue. Same shape as the two KWAP-01 bugs.
+                syncAction = if (existing.syncAction == SyncAction.CREATE && existing.pendingSync) {
+                    SyncAction.CREATE
+                } else {
+                    SyncAction.UPDATE
+                },
+            )
+        )
+    }
+
     /** Soft-delete (offline-first); "newest record is truth" edit model. */
     suspend fun deleteLocal(id: String) {
         val now = Clock.System.now().toString()
-        // PRODUCTION BUG FIX. Was `getPendingSync().find { it.id == id }`, which
-        // could only ever see rows that had NOT synced — a harvest the server
-        // already had was silently undeletable, the call returning as though it
-        // had worked.
+        // Was `getPendingSync().find { it.id == id }`, which could only ever see
+        // rows that had NOT synced — a harvest the server already had was
+        // silently undeletable, the call returning as though it had worked.
         val harvest = harvestDao.getById(id) ?: return
         harvestDao.upsert(
             harvest.copy(deletedAt = now, updatedAt = now, pendingSync = true, syncAction = SyncAction.DELETE)
@@ -130,13 +183,12 @@ class HarvestRepository @Inject constructor(
                     }
                 }
                 SyncAction.UPDATE -> {
-                    // PRODUCTION BUG FIX. This was a `report.failed(
-                    // "unexpected_update_row")` stub, on the grounds that
-                    // nothing could produce an UPDATE row. That was true only
-                    // while no UI could edit a harvest; any future edit path
-                    // would have turned every edit into a permanent push
-                    // failure. Implemented against the `PATCH /harvests/{id}`
-                    // route and DTO that have existed all along.
+                    // THE UI HAS A HARVEST-EDIT PATH NOW (KWAP-03-V2 §2.1), so
+                    // this branch is live. It used to report
+                    // "unexpected_update_row" on the grounds that nothing could
+                    // produce one — making the season record tappable is exactly
+                    // what produces one, and leaving the stub would have turned
+                    // every edit into a permanent push failure.
                     val response = api.updateHarvest(
                         harvest.id,
                         HarvestUpdateRequest(
@@ -227,7 +279,12 @@ class HarvestRepository @Inject constructor(
         return clean.size
     }
 
-    /** Single exit for every non-2xx — classification lives in [RetryPolicy]. */
+    /**
+     * One exit for every non-2xx (see [RetryPolicy]). A TERMINAL or CONFLICT
+     * verdict clears `pendingSync` so the row stops re-sending; the payload is
+     * already in `audit_sync_conflicts` by then, so nothing is dropped. RETRY
+     * leaves the row pending, which is what the next cycle picks up.
+     */
     private suspend fun applyFailure(
         harvest: HarvestEntity,
         code: Int,

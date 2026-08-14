@@ -39,4 +39,22 @@ object YieldConversion {
         HarvestUnits.GOROGORO -> HarvestConversions.GOROGORO_CENTI
         else -> null
     }
+
+    /**
+     * Kilograms per acre, centi in / centi out — the yield sanity line (§2.8).
+     *
+     * 🔴 THE DIVISOR IS PLANTED AREA, NEVER FARM AREA. A farmer who sowed 1.6 of
+     * their 3 acres and harvested 720 kg got 450 kg/acre, not 240. Dividing by
+     * the shamba's size would understate exactly the farmers who were most
+     * cautious about trying Kumea N, which is the population the impact report
+     * most needs to read correctly.
+     *
+     * Integer math, and the multiply comes first so the intermediate keeps its
+     * precision: 72000 × 100 / 160 = 45000 = 450.00 kg/acre.
+     *
+     * Null when there is no planted area to divide by — §2.8 then shows total
+     * kilograms only and skips the per-acre line rather than inventing one.
+     */
+    fun kgPerAcreCenti(qtyKgCenti: Long, plantedAreaCenti: Long): Long? =
+        if (plantedAreaCenti <= 0) null else qtyKgCenti * 100 / plantedAreaCenti
 }

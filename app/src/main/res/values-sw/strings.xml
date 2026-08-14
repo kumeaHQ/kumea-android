@@ -134,15 +134,47 @@
     <!-- Build-2: planting date -->
     <string name="planting_title">Tarehe ya kupanda</string>
     <string name="planting_question">Ulipanda lini?</string>
-    <string name="planting_today">Leo</string>
-    <string name="planting_yesterday">Jana</string>
-    <string name="planting_pick_day">Chagua tarehe nyingine</string>
-    <string name="planting_helper">Kwa shamba hili tu</string>
+
+    <!-- KWAP-03-V2 §2.4: maswali ya kupanda. -->
+    <string name="skip">Ruka</string>
+    <string name="acres_value">ekari %s</string>
+    <string name="kg_value">kilo %s</string>
+    <string name="kes_value">KES %s</string>
+    <string name="planting_which_crop">Ulipanda nini?</string>
+    <string name="planting_crop_unknown_hint">Hatuna mazao yako bado — chagua ulichopanda.</string>
+    <string name="planting_area_question">Ulipanda sehemu gani ya shamba lako?</string>
+    <string name="planting_area_hint">Inaweza kuwa chini ya shamba lako lote.</string>
+    <string name="planting_area_label">Ekari zilizopandwa</string>
+    <string name="planting_seed_kg_question">Kilo ngapi za mbegu?</string>
+    <string name="planting_seed_kg_label">Mbegu (kilo)</string>
+    <string name="planting_variety_question">Aina gani?</string>
+    <string name="planting_variety_label">Aina</string>
+    <string name="planting_seed_cost_question">Mbegu iligharimu kiasi gani?</string>
+    <string name="planting_seed_cost_label">Gharama (KES)</string>
+    <string name="planting_seed_cost_linked">Tutaiweka kwenye manunuzi yako, usiiweke tena.</string>
+    <string name="planting_review_title">Angalia upandaji wako</string>
+    <string name="planting_review_date">Ilipandwa</string>
+    <string name="planting_review_crop">Zao</string>
+    <string name="planting_review_area">Eneo</string>
+    <string name="planting_review_seed">Mbegu</string>
+    <string name="planting_review_variety">Aina</string>
+    <string name="planting_review_seed_cost">Gharama ya mbegu</string>
+    <string name="planting_trial_role">Shamba la majaribio</string>
+    <string name="trial_none">Si majaribio</string>
+    <string name="trial_treated">Ilipata Kumea N</string>
+    <string name="trial_control">Shamba la kulinganisha</string>
     <string name="planting_save">Hifadhi tarehe ya kupanda</string>
     <string name="planting_action">Tarehe ya kupanda</string>
 
     <!-- Build-2: harvest wizard -->
     <string name="harvest_title">Weka mavuno</string>
+    <string name="harvest_title_edit">Badilisha mavuno</string>
+    <!-- KWAP-03-V2 §2.8: ukaguzi mmoja wa mavuno. -->
+    <string name="harvest_sanity_title">Tuangalie</string>
+    <string name="harvest_sanity_body">Ni takriban kilo %1$s kutoka ekari %2$s — kilo %3$s kwa ekari.</string>
+    <string name="harvest_sanity_question">Je, hii ni sahihi?</string>
+    <string name="harvest_sanity_yes">Ndio</string>
+    <string name="harvest_sanity_change">Badilisha</string>
     <string name="harvest_action">Weka mavuno</string>
     <string name="harvest_how_much">Umevuna kiasi gani?</string>
     <string name="harvest_quantity">Kiasi</string>
@@ -168,7 +200,12 @@
     <!-- Build-2: proof card -->
     <string name="season_record">Msimu huu</string>
     <string name="proof_planted">Ilipandwa: %s</string>
+    <string name="proof_planted_detail">%1$s kwa ekari %2$s</string>
     <string name="proof_harvested">Mavuno: %1$s %2$s</string>
+    <!-- KWAP-03-V2 §2.1: kipimo cha mkulima, kilo halisi, kisha tarehe. -->
+    <string name="proof_harvested_canonical">Mavuno: %1$s %2$s (kilo %3$s) · %4$s</string>
+    <string name="proof_harvested_dated">Mavuno: %1$s %2$s · %3$s</string>
+    <string name="record_tap_to_edit">Gusa kubadilisha</string>
     <string name="proof_replanting">Atapanda tena: %s</string>
     <string name="proof_replanting_yes">Atapanda tena msimu ujao</string>
     <string name="proof_not_replanting">Hatapanda msimu ujao</string>
@@ -200,6 +237,9 @@
 
     <!-- Build-3: verbs & FarmHome -->
     <string name="verb_add_record">Ongeza kumbukumbu</string>
+    <!-- KWAP-03-V2 §2.7: maelezo yana kitufe chake. -->
+    <string name="verb_add_observation">Weka maelezo</string>
+    <string name="note_observation_title">Weka maelezo</string>
     <string name="shughuli">Shughuli</string>
     <string name="kumea_n_link_row">Kumea N ya maharagwe</string>
     <string name="no_shughuli_yet">Hakuna kilichorekodiwa bado.</string>
@@ -246,8 +286,6 @@
     <string name="amount_hint">Tarakimu pekee, hadi desimali 2</string>
     <string name="note_label">Maelezo</string>
     <string name="note_optional">Maelezo (hiari)</string>
-    <string name="field_label">Sehemu ya shamba</string>
-    <string name="no_fields_hint">Hakuna sehemu — vuta kusasisha</string>
     <string name="date_label">Tarehe</string>
     <string name="save">Hifadhi</string>
 
@@ -265,7 +303,7 @@
     <!-- Build-3: ledger -->
     <string name="ledger_revenue">Mapato</string>
     <string name="ledger_costs">Matumizi</string>
-    <string name="ledger_by_field">Kwa sehemu</string>
+    <string name="ledger_by_field">Kwa kipande</string>
     <string name="ledger_by_category">Matumizi kwa aina</string>
     <string name="break_even">Hakuna faida wala hasara</string>
     <string name="ledger_load_failed">Imeshindwa kupakia muhtasari wa pesa. Angalia mtandao wako ujaribu tena.</string>

@@ -25,9 +25,13 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import co.ke.kumea.R
 import co.ke.kumea.data.local.NoteType
 import co.ke.kumea.ui.common.PaperCard
+import androidx.compose.material3.FilterChipDefaults
+import androidx.compose.ui.graphics.Color
 import co.ke.kumea.ui.theme.Clay
 import co.ke.kumea.ui.theme.ClayWash
+import co.ke.kumea.ui.theme.InkMuted
 import co.ke.kumea.ui.theme.KumeaButtonShape
+import co.ke.kumea.ui.theme.LeafGreen
 import co.ke.kumea.util.Money
 import kotlinx.datetime.Instant
 
@@ -39,14 +43,20 @@ fun NoteCreateScreen(
     viewModel: NoteDetailViewModel = hiltViewModel(),
 ) {
     val state by viewModel.uiState.collectAsStateWithLifecycle()
-    var fieldMenuExpanded by remember { mutableStateOf(false) }
     var showDatePicker by remember { mutableStateOf(false) }
     val purchaseFallbackBody = state.purchaseItem?.let { stringResource(it.labelRes()) }
 
     Scaffold(
         topBar = {
             TopAppBar(
-                title = { Text(stringResource(R.string.verb_add_record)) },
+                title = {
+                    Text(
+                        stringResource(
+                            if (state.mode == NoteMode.OBSERVATION) R.string.note_observation_title
+                            else R.string.verb_add_record,
+                        ),
+                    )
+                },
                 navigationIcon = {
                     IconButton(onClick = onBack) {
                         Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back")
@@ -63,20 +73,39 @@ fun NoteCreateScreen(
                 .verticalScroll(rememberScrollState()),
             verticalArrangement = Arrangement.spacedBy(16.dp),
         ) {
-            // ── Type selector ──────────────────────────────────────────────
-            Text(stringResource(R.string.note_type), style = MaterialTheme.typography.labelLarge)
-            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                NoteType.entries.forEach { type ->
-                    FilterChip(
-                        selected = state.type == type,
-                        onClick = { viewModel.onTypeChange(type) },
-                        label = { Text(typeLabel(type)) },
-                    )
+            // ── Type selector — TWO LEDGERS ONLY (§2.6) ────────────────────
+            //
+            // Was `NoteType.entries`, which put Activity in the money picker and
+            // made "is this a purchase, a sale, or an activity?" the first
+            // question a farmer had to answer. ACTIVITY has its own entry point
+            // now, and this row never shows it.
+            if (state.mode == NoteMode.MONEY) {
+                Text(stringResource(R.string.note_type), style = MaterialTheme.typography.labelLarge)
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    state.moneyTypes.forEach { type ->
+                        FilterChip(
+                            selected = state.type == type,
+                            onClick = { viewModel.onTypeChange(type) },
+                            label = {
+                                // 🔴 THE SIGN IS NOT DECORATION. Around 8% of men
+                                // have red–green colour deficiency and this app
+                                // serves a mostly-male farming population, so
+                                // red-vs-green cannot be the only thing telling
+                                // money-out from money-in. The −/+ carries the
+                                // meaning; the colour reinforces it.
+                                Text("${type.sign()} ${typeLabel(type)}")
+                            },
+                            colors = FilterChipDefaults.filterChipColors(
+                                selectedContainerColor = type.tint().copy(alpha = 0.18f),
+                                selectedLabelColor = type.tint(),
+                            ),
+                        )
+                    }
                 }
             }
 
             // ── Purchase picklist (Build-3 §5) — the input IS the pick ─────
-            if (state.type == NoteType.PURCHASE) {
+            if (state.mode == NoteMode.MONEY && state.type == NoteType.PURCHASE) {
                 Text(
                     stringResource(R.string.purchase_what),
                     style = MaterialTheme.typography.labelLarge,
@@ -96,32 +125,47 @@ fun NoteCreateScreen(
                 }
             }
 
-            // ── Amount — neutral Ink, KES at the edge, cents underneath ────
-            val amountInvalid = state.amount.isNotBlank() && state.parsedPreview == null
-            OutlinedTextField(
-                value = state.amount,
-                onValueChange = viewModel::onAmountChange,
-                label = {
-                    Text(
-                        if (state.amountRequired) stringResource(R.string.amount_kes)
-                        else stringResource(R.string.cost_optional_kes),
-                    )
-                },
-                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
-                singleLine = true,
-                isError = amountInvalid,
-                supportingText = {
-                    if (state.amount.isNotBlank()) {
-                        val preview = state.parsedPreview
-                        if (preview != null) {
-                            Text("= ${Money.formatCents(preview)}")
-                        } else {
-                            Text(stringResource(R.string.amount_hint))
+            // ── Amount — MONEY MODE ONLY ───────────────────────────────────
+            //
+            // §2.7 removes "Cost (optional, KES)" from the observation form
+            // entirely rather than hiding or disabling it. An optional money
+            // field on an observation is what made the activity log a third,
+            // ambiguous ledger: a farmer could record a cost there and it would
+            // never appear alongside their purchases.
+            if (state.mode == NoteMode.MONEY) {
+                val amountInvalid = state.amount.isNotBlank() && state.parsedPreview == null
+                OutlinedTextField(
+                    value = state.amount,
+                    onValueChange = viewModel::onAmountChange,
+                    label = { Text(stringResource(R.string.amount_kes)) },
+                    // The sign again, in the field itself, so the direction is
+                    // visible at the moment the number is typed.
+                    prefix = {
+                        Text(
+                            state.type.sign(),
+                            color = state.type.tint(),
+                            style = MaterialTheme.typography.bodyLarge,
+                        )
+                    },
+                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
+                    singleLine = true,
+                    isError = amountInvalid,
+                    supportingText = {
+                        if (state.amount.isNotBlank()) {
+                            val preview = state.parsedPreview
+                            if (preview != null) {
+                                Text(
+                                    "${state.type.sign()} ${Money.formatCents(preview)}",
+                                    color = state.type.tint(),
+                                )
+                            } else {
+                                Text(stringResource(R.string.amount_hint))
+                            }
                         }
-                    }
-                },
-                modifier = Modifier.fillMaxWidth(),
-            )
+                    },
+                    modifier = Modifier.fillMaxWidth(),
+                )
+            }
 
             // ── Note text — optional for a purchase, the record otherwise ──
             OutlinedTextField(
@@ -137,41 +181,18 @@ fun NoteCreateScreen(
                 minLines = 2,
             )
 
-            // ── Field picker (a Note attaches to a Field) ──────────────────
-            val selectedFieldName =
-                state.fields.firstOrNull { it.id == state.selectedFieldId }?.name
-                    ?: stringResource(R.string.no_fields_hint)
-            ExposedDropdownMenuBox(
-                expanded = fieldMenuExpanded,
-                onExpandedChange = { fieldMenuExpanded = it },
-            ) {
-                OutlinedTextField(
-                    value = selectedFieldName,
-                    onValueChange = {},
-                    readOnly = true,
-                    label = { Text(stringResource(R.string.field_label)) },
-                    trailingIcon = {
-                        ExposedDropdownMenuDefaults.TrailingIcon(expanded = fieldMenuExpanded)
-                    },
-                    modifier = Modifier
-                        .menuAnchor()
-                        .fillMaxWidth(),
-                )
-                ExposedDropdownMenu(
-                    expanded = fieldMenuExpanded,
-                    onDismissRequest = { fieldMenuExpanded = false },
-                ) {
-                    state.fields.forEach { option ->
-                        DropdownMenuItem(
-                            text = { Text(option.name) },
-                            onClick = {
-                                viewModel.onFieldSelected(option.id)
-                                fieldMenuExpanded = false
-                            },
-                        )
-                    }
-                }
-            }
+            // ── THE FIELD PICKER IS GONE (§2.2) ────────────────────────────
+            //
+            // It only ever held one value: every farm has exactly one
+            // auto-created Field, and NoteDetailViewModel already auto-selected
+            // `options.firstOrNull()` — so this dropdown asked the farmer to
+            // choose from a list of one, using a word ("Field") that §2.2
+            // retires from their vocabulary. Pure removal, per VERIFY-4.
+            //
+            // NOTHING CHANGED UNDERNEATH. `NoteEntity.fieldId` is untouched, the
+            // Field schema is untouched, and the ViewModel still resolves the
+            // farm's single field (and still lazily creates one if a pulled farm
+            // somehow has none). This removes a question, not a relationship.
 
             // ── Date (occurredAt) ──────────────────────────────────────────
             Box {
@@ -314,4 +335,36 @@ private fun typeLabel(type: NoteType): String = when (type) {
     NoteType.ACTIVITY -> stringResource(R.string.activity)
     NoteType.PURCHASE -> stringResource(R.string.purchase)
     NoteType.SALE -> stringResource(R.string.sale)
+}
+
+/**
+ * The direction prefix (§2.6). ACTIVITY has no sign because it has no amount.
+ *
+ * A true minus sign (U+2212), not a hyphen: at the small weights this renders
+ * at, a hyphen reads as a dash rather than as arithmetic.
+ */
+internal fun NoteType.sign(): String = when (this) {
+    NoteType.PURCHASE -> "−"
+    NoteType.SALE -> "+"
+    NoteType.ACTIVITY -> ""
+}
+
+/**
+ * The colour that accompanies the sign.
+ *
+ * CLAY, NOT RED, for a purchase. §2.6's table says red, but this codebase made
+ * a deliberate and better-reasoned call first — LedgerScreen: "Buckets are
+ * inputs, not losses — Clay figures, never red." Seed and fertiliser are
+ * investments a farmer chose to make, and colouring them as errors misreads the
+ * farm's own accounts back at them.
+ *
+ * The ticket's actual requirement is unaffected and is met: colour is not the
+ * only signal. [sign] carries the direction, and Clay-vs-LeafGreen is a
+ * brown/green contrast rather than the red/green pair that ~8% of men cannot
+ * separate — so this is strictly safer than what §2.6 specified.
+ */
+internal fun NoteType.tint(): Color = when (this) {
+    NoteType.PURCHASE -> Clay
+    NoteType.SALE -> LeafGreen
+    NoteType.ACTIVITY -> InkMuted
 }
