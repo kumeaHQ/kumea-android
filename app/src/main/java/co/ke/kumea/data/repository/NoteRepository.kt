@@ -79,9 +79,12 @@ class NoteRepository @Inject constructor(
     }
 
     /**
-     * Update a note locally (offline-first). Mirrors FieldRepository exactly,
-     * including the getPendingSync().find inheritance gap (no UI exercises a
-     * synced-row edit yet — see the 3.1 generalisation report).
+     * Update a note locally (offline-first).
+     *
+     * PRODUCTION BUG FIX. The read was `getPendingSync().find { it.id == id }`,
+     * which could only ever see rows that had NOT yet synced. On a shipped
+     * handset, editing a note the server already had did nothing at all — and
+     * returned as though it had worked, so nothing surfaced. Reads by id now.
      */
     suspend fun updateLocal(
         id: String,
@@ -92,8 +95,7 @@ class NoteRepository @Inject constructor(
         costCategory: CostCategory? = null,
     ) {
         val now = Clock.System.now().toString()
-        var note = noteDao.getPendingSync().find { it.id == id }
-            ?: return
+        var note = noteDao.getById(id) ?: return
         note = note.copy(
             type = type ?: note.type,
             body = body ?: note.body,
@@ -102,16 +104,21 @@ class NoteRepository @Inject constructor(
             occurredAt = occurredAt ?: note.occurredAt,
             updatedAt = now,
             pendingSync = true,
-            syncAction = SyncAction.UPDATE,
+            // An unsynced CREATE must stay a CREATE — flipping it would PATCH an
+            // id the server has never seen (404, retried for ever).
+            syncAction = if (note.syncAction == SyncAction.CREATE && note.pendingSync) {
+                SyncAction.CREATE
+            } else {
+                SyncAction.UPDATE
+            },
         )
         noteDao.upsert(note)
     }
 
-    /** Soft-delete a note locally (offline-first). */
+    /** Soft-delete a note locally (offline-first). Same by-id fix as above. */
     suspend fun deleteLocal(id: String) {
         val now = Clock.System.now().toString()
-        var note = noteDao.getPendingSync().find { it.id == id }
-            ?: return
+        var note = noteDao.getById(id) ?: return
         note = note.copy(
             deletedAt = now,
             updatedAt = now,

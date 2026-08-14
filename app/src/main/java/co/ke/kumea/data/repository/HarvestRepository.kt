@@ -9,6 +9,7 @@ import co.ke.kumea.data.local.SyncConflictDao
 import co.ke.kumea.data.local.SyncConflictEntity
 import co.ke.kumea.data.remote.KumeaApi
 import co.ke.kumea.data.remote.dto.HarvestCreateRequest
+import co.ke.kumea.data.remote.dto.HarvestUpdateRequest
 import co.ke.kumea.data.sync.PushReport
 import co.ke.kumea.data.sync.PushReportBuilder
 import co.ke.kumea.data.sync.SyncableRepository
@@ -90,7 +91,11 @@ class HarvestRepository @Inject constructor(
     /** Soft-delete (offline-first); "newest record is truth" edit model. */
     suspend fun deleteLocal(id: String) {
         val now = Clock.System.now().toString()
-        val harvest = harvestDao.getPendingSync().find { it.id == id } ?: return
+        // PRODUCTION BUG FIX. Was `getPendingSync().find { it.id == id }`, which
+        // could only ever see rows that had NOT synced — a harvest the server
+        // already had was silently undeletable, the call returning as though it
+        // had worked.
+        val harvest = harvestDao.getById(id) ?: return
         harvestDao.upsert(
             harvest.copy(deletedAt = now, updatedAt = now, pendingSync = true, syncAction = SyncAction.DELETE)
         )
@@ -128,11 +133,41 @@ class HarvestRepository @Inject constructor(
                     }
                 }
                 SyncAction.UPDATE -> {
-                    // The UI has no harvest-edit path yet ("newest record is
-                    // truth"); an UPDATE row can only come from markSynced's
-                    // action flip, which also clears pendingSync. Surfaced, not
-                    // silently skipped, if one ever appears.
-                    report.failed("unexpected_update_row")
+                    // PRODUCTION BUG FIX. This was a `report.failed(
+                    // "unexpected_update_row")` stub, on the grounds that
+                    // nothing could produce an UPDATE row. That was true only
+                    // while no UI could edit a harvest; any future edit path
+                    // would have turned every edit into a permanent push
+                    // failure. Implemented against the `PATCH /harvests/{id}`
+                    // route and DTO that have existed all along.
+                    val response = api.updateHarvest(
+                        harvest.id,
+                        HarvestUpdateRequest(
+                            quantity = Quantity.formatCenti(harvest.quantityCenti),
+                            unit = harvest.unit,
+                            keptQuantity = harvest.keptCenti?.let(Quantity::formatCenti),
+                            soldQuantity = harvest.soldCenti?.let(Quantity::formatCenti),
+                            replantIntent = harvest.replantIntent,
+                            replantMonth = harvest.replantMonth,
+                            updatedAt = harvest.updatedAt,
+                        )
+                    )
+                    if (response.isSuccessful) {
+                        harvestDao.markSynced(harvest.id, response.body()!!.updatedAt)
+                        report.succeeded()
+                    } else if (response.code() == 409) {
+                        recordConflict(harvest, response.errorBody()?.string() ?: "{}", "update_409")
+                        harvestDao.upsert(harvest.copy(pendingSync = false))
+                        report.failed("409")
+                    } else if (response.code() == 403) {
+                        // Terminal, per the FarmRepository/AgentRepository
+                        // pattern: a harvest on someone else's field is a
+                        // rejection no retry can fix.
+                        harvestDao.upsert(harvest.copy(pendingSync = false))
+                        report.failed("403")
+                    } else {
+                        report.failed(response.code().toString())
+                    }
                 }
                 SyncAction.DELETE -> {
                     val response = api.deleteHarvest(harvest.id)

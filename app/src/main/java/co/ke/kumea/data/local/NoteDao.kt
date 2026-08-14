@@ -34,6 +34,10 @@ interface NoteDao {
     )
     fun getActiveByFarm(farmId: String): Flow<List<NoteEntity>>
 
+    /** One active note by id, synced or not. */
+    @Query("SELECT * FROM notes WHERE id = :id AND deletedAt IS NULL")
+    suspend fun getById(id: String): NoteEntity?
+
     /**
      * Rows with pending local changes that need pushing. Same invariant as
      * FieldDao: pullSince() skips pending rows so push gets its turn first.

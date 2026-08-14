@@ -27,6 +27,13 @@ interface HarvestDao {
     @Query("SELECT * FROM harvests WHERE id IN (:ids)")
     suspend fun getByIds(ids: List<String>): List<HarvestEntity>
 
+    /**
+     * One active harvest by id. Distinct from [getByIds], which deliberately
+     * sees soft-deleted rows.
+     */
+    @Query("SELECT * FROM harvests WHERE id = :id AND deletedAt IS NULL")
+    suspend fun getById(id: String): HarvestEntity?
+
     @Query("SELECT * FROM harvests WHERE pendingSync = 1 ORDER BY updatedAt ASC")
     suspend fun getPendingSync(): List<HarvestEntity>
 

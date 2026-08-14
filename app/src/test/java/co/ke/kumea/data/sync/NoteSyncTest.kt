@@ -41,6 +41,8 @@ class NoteSyncTest {
         override fun getActiveByField(fieldId: String): Flow<List<NoteEntity>> = flowOf(emptyList())
         override fun getActiveByFarm(farmId: String): Flow<List<NoteEntity>> = flowOf(emptyList())
         override suspend fun getPendingSync(): List<NoteEntity> = pending
+        override suspend fun getById(id: String): NoteEntity? =
+            (pending + upserts).lastOrNull { it.id == id }
         override suspend fun getLatestUpdatedAt(): String? = latest
         override suspend fun upsertAll(notes: List<NoteEntity>) { upsertAlls.add(notes) }
         override suspend fun upsert(note: NoteEntity) { upserts.add(note) }
