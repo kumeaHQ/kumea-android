@@ -487,10 +487,45 @@ separate, so this is strictly safer than what was specified.
   than picked. Numbers are in `PRICE-MATRIX-LOCKED.md` (revised 12 Aug).
   `SkuOptions` still holds the superseded 14 Jun codes and says so in a comment.
   Land before the first real sale.
-- 🔴 **`plantings` has no server half.** The client is done and unbound; the
-  server needs a Planting model, controller, DTO and migration before the
-  `@Binds @IntoSet` in `RepositoryModule` can be uncommented. Until then a
-  planting lives only on the device that recorded it.
+- 🟠 **`plantings` server half is WRITTEN, NOT DEPLOYED (18 Aug).** `kumea-api`
+  branch `kwap-03-v2/server-half`: `Planting` model + module + migration
+  `20260818120000_kwap03v2_plantings_and_note_source`, plus the
+  `notes.sourceType`/`sourceId` whitelist. Migration applied to a throwaway
+  Postgres 16 and `prisma migrate diff` says "No difference detected"; 261 tests
+  green. **Until it is deployed, a planting still lives only on the device that
+  recorded it** — the `@Binds @IntoSet` in `RepositoryModule` stays commented out.
+
+  The by-hand wire diff corrected two of the server ticket's own
+  recommendations, and the client did **not** move:
+  - `seedKg` / `plantedArea` stay **decimal strings** — the ticket proposed
+    `seedKgCenti` / `plantedAreaCenti` as JSON numbers, which no shipped client
+    sends.
+  - They serialise at **2 dp**, not the 4 dp every other quantity uses, because
+    `Quantity.parseToCenti` matches at most two and `pullSince` drops a row that
+    fails to parse.
+
+  Two follow-ups belong in the commit that arms the binding, after the deploy:
+  1. Uncomment the `@Binds @IntoSet` and confirm with one real push.
+  2. **Add `sourceType`/`sourceId` to `NoteCreateRequest` / `NoteUpdateRequest` /
+     `NoteResponse`.** The server now accepts and stores them; the client still
+     does not send them, so the link is device-only until it does.
+
+- ⚠️ **Backfilled plantings can never sync.** `MIGRATION_13_14` writes them with
+  `pendingSync = 0`, so `getPendingSync()` never returns them and no push is ever
+  attempted. Their ids are also `'planting-' || fields.id`, which is not a UUID
+  v4 and the server's `@IsUUID('4')` would reject. Zero rows on every handset
+  checked, so nothing is lost today — but a device that recorded a
+  `fields.plantedAt` before v14 keeps that history locally, for ever.
+
+- 🔴 **Server harvests are dropped on every pull.** `HarvestsService`
+  serialises `quantity` with `Prisma.Decimal.toFixed(4)` → `"5.0000"`, and
+  `Quantity.parseToCenti` matches `^(\d+)(?:\.(\d{1,2}))?$` — at most two
+  decimals. It returns null and `HarvestRepository.pullSince` does
+  `?: return@mapNotNull null`, so **every harvest row the server returns is
+  silently discarded**. Found 18 Aug while diffing the planting wire contract;
+  `HarvestWireContractTest` covers the push direction only. Not fixed here (it is
+  client work and belongs in the small release), and it is why `plantings`
+  serialises at 2 dp.
 - **v13 → v14 has not been run on a handset.** The SQL was verified against a
   pulled copy of the real v13 device database (111 agents + TestFarm survive,
   `foreign_key_check` clean, backfill correct) and the resulting schema was
