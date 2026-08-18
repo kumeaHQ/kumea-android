@@ -396,14 +396,14 @@ had — the on-behalf role and ward rejections are 403 precisely so it exists.
 
 Spec: `~/Desktop/Kumea-Claude/TICKET-KWAP-03-farmer-page.md`, with all eight
 ⚠️VERIFY items resolved in `VERIFY-RESULTS-KWAP-03.md`. **Client shipped
-(`d42a785`); the server half is written and NOT deployed** — branch
-`kwap-03/farm-profile` in `kumea-api`, commit `a457197`.
+(`d42a785`); the server half is DEPLOYED** — `a457197` + `c83917f` are on
+`kumea-api` `main` and live on Railway. (This file said "NOT deployed" until
+18 Aug; it had been merged and shipped in the meantime.)
 
-**Deploy the server before building a release APK.** Nine `farms` columns, three
-`harvests` columns and `farm_crops` are device-only until it lands;
-`FarmRepository.applyServerFarms` and `HarvestRepository.pullSince` carry them
-forward from the local row so a pull cannot erase a baseline nobody can re-ask
-for, and both spots say where the `local?.x` becomes `server.x`.
+The nine `farms` columns, three `harvests` columns and `farm_crops` all reach
+the server now. `FarmRepository.applyServerFarms` and `HarvestRepository.pullSince`
+still carry them forward from the local row so a pull cannot erase a baseline
+nobody can re-ask for, and both spots say where the `local?.x` becomes `server.x`.
 
 Four decisions taken during the build, each recorded where it applies:
 
@@ -487,13 +487,17 @@ separate, so this is strictly safer than what was specified.
   than picked. Numbers are in `PRICE-MATRIX-LOCKED.md` (revised 12 Aug).
   `SkuOptions` still holds the superseded 14 Jun codes and says so in a comment.
   Land before the first real sale.
-- 🟠 **`plantings` server half is WRITTEN, NOT DEPLOYED (18 Aug).** `kumea-api`
-  branch `kwap-03-v2/server-half`: `Planting` model + module + migration
+- 🟢 **`plantings` server half is DEPLOYED (18 Aug).** `kumea-api` `7cb03d2` on
+  `main`, live on Railway: `Planting` model + module + migration
   `20260818120000_kwap03v2_plantings_and_note_source`, plus the
-  `notes.sourceType`/`sourceId` whitelist. Migration applied to a throwaway
-  Postgres 16 and `prisma migrate diff` says "No difference detected"; 261 tests
-  green. **Until it is deployed, a planting still lives only on the device that
-  recorded it** — the `@Binds @IntoSet` in `RepositoryModule` stays commented out.
+  `notes.sourceType`/`sourceId` whitelist. Migration applied to production
+  (confirmed in the deploy log); all five `/plantings` routes answer 401 rather
+  than 404; `/health` stayed 200 throughout. 261 tests green.
+
+  🔴 **The client is still unbound, so this changes nothing yet.** The
+  `@Binds @IntoSet` in `RepositoryModule` remains commented out — arming it is
+  now the smallest high-value change available, and it is what the review's §2.1
+  ("the research dataset half-lives on handsets") is actually waiting on.
 
   The by-hand wire diff corrected two of the server ticket's own
   recommendations, and the client did **not** move:
@@ -504,11 +508,11 @@ separate, so this is strictly safer than what was specified.
     `Quantity.parseToCenti` matches at most two and `pullSince` drops a row that
     fails to parse.
 
-  Two follow-ups belong in the commit that arms the binding, after the deploy:
-  1. Uncomment the `@Binds @IntoSet` and confirm with one real push.
+  Two things belong in the commit that arms it — both now unblocked:
+  1. Uncomment the `@Binds @IntoSet` and confirm with one real push on a handset.
   2. **Add `sourceType`/`sourceId` to `NoteCreateRequest` / `NoteUpdateRequest` /
-     `NoteResponse`.** The server now accepts and stores them; the client still
-     does not send them, so the link is device-only until it does.
+     `NoteResponse`.** The server accepts and stores them now; the client still
+     does not send them, so the link stays device-only until it does.
 
 - ⚠️ **Backfilled plantings can never sync.** `MIGRATION_13_14` writes them with
   `pendingSync = 0`, so `getPendingSync()` never returns them and no push is ever
@@ -526,6 +530,11 @@ separate, so this is strictly safer than what was specified.
   `HarvestWireContractTest` covers the push direction only. Not fixed here (it is
   client work and belongs in the small release), and it is why `plantings`
   serialises at 2 dp.
+
+  **Marcus's call, 18 Aug: this is the TOP item of the small client release.**
+  The data is not lost — it is on the server — but it is stranded on the
+  recording device, and it is yield data, which is the whole point of the
+  research.
 - **v13 → v14 has not been run on a handset.** The SQL was verified against a
   pulled copy of the real v13 device database (111 agents + TestFarm survive,
   `foreign_key_check` clean, backfill correct) and the resulting schema was
