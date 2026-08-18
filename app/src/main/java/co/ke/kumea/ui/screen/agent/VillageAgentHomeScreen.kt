@@ -94,10 +94,18 @@ fun VillageAgentHomeScreen(
             TopAppBar(
                 title = { Text("Sales & Earnings") },
                 actions = {
-                    // INTERIM (3 Jul, HQ session): routes to the existing FarmCreate
-                    // screen so an agent can register the farmer a sale attaches to.
-                    // Replaced by the full AS-1 register-farmer flow (inline capture,
-                    // referrerAgentId, proper copy) — see AGENT-SALE-LOOP-TICKET.
+                    // Routes to RegisterFarmerScreen since 18 Aug (KWAP-06 §3.4).
+                    // It pointed at FarmCreate — the SELF-registration screen —
+                    // from 3 Jul, which gave the farmer no ward and no local
+                    // provenance.
+                    //
+                    // NOTE for whoever reads AGENT-SALE-LOOP-TICKET: it says this
+                    // flow should set `referrerAgentId`. It must NOT, and neither
+                    // screen does. Referral is who GETS PAID; registration is who
+                    // TYPED IT IN. The commission engine accrues backdated to
+                    // 1 June, so a referrer on a research farmer is money owed to
+                    // an agent who sold nothing. See FarmEntity's three-reference
+                    // note. Attribution is created by a sale, and only by a sale.
                     TextButton(onClick = onRegisterFarmer) { Text("New farmer") }
                     TextButton(onClick = { viewModel.logout() }) { Text("Log out") }
                 },

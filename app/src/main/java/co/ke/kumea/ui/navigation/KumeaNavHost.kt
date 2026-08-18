@@ -231,13 +231,20 @@ fun KumeaNavHost(
                 // was attributed to. The farmer surface stays money-free.
                 onOpenLedger = { farmId -> navController.navigate(Routes.ledger(farmId)) },
                 onRecordSale = { navController.navigate(Routes.orderCreate(null)) },
-                // STILL INTERIM, and still wrong: a farmer an agent registers
-                // this way becomes a farm the AGENT owns, with no farmerName and
-                // no provenance. RegisterFarmerScreen (step 4) is the fix and
-                // the server already permits a village_agent to use it — but the
-                // agent's own roster is step 5, so this is repointed there, not
-                // here. See CLAUDE.md "Live mis-attribution".
-                onRegisterFarmer = { navController.navigate(Routes.FARM_CREATE) },
+                // FIXED 18 Aug (KWAP-06 §3.4). This pointed at FARM_CREATE, the
+                // SELF-registration screen, so a farmer an agent added became a
+                // farm with no local ward and no local registeredByAgentId — it
+                // never appeared in the register it was supposed to join, and
+                // ward-grouping the ~395 research farms silently missed it.
+                //
+                // RegisterFarmerScreen is written for "the officer's and village
+                // agent's" path, derives ward + provenance from the caller's own
+                // agent record, and the server has permitted a village_agent
+                // since KWAP-01 step 2. The deferral was waiting on the agent's
+                // own roster (step 5) — but a roster is a VIEW, and withholding
+                // the correct write until the view exists just means more rows to
+                // repair later.
+                onRegisterFarmer = { navController.navigate(Routes.FARMER_REGISTER) },
                 onLoggedOut = {
                     navController.navigate(Routes.PHONE_ENTRY) {
                         popUpTo(0) { inclusive = true }

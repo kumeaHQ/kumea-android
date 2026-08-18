@@ -19,6 +19,7 @@ import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.ExposedDropdownMenuBox
 import androidx.compose.material3.ExposedDropdownMenuDefaults
 import androidx.compose.material3.FilterChip
+import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
@@ -36,15 +37,25 @@ import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
-import co.ke.kumea.data.local.OrderChannels
+import co.ke.kumea.domain.model.KumeaNPack
 import co.ke.kumea.util.Money
 
 /**
- * Record a Kumea N sale (P1-T3). Channel is a forced explicit choice — there is
- * no default chip, mirroring the server's REQUIRED channel. The agent picker
- * only offers commission-eligible agents (officers are never shown; the server
- * would reject them anyway). Save is ONLINE: a server rejection surfaces its
- * message inline; nothing is stored locally on failure.
+ * Record a Kumea N sale.
+ *
+ * ── THREE INPUTS REMOVED, 18 AUG (KWAP-06 §3.1–3.3) ─────────────────────────
+ *
+ * This screen used to ask for a unit PRICE (free text), a CHANNEL (chip row) and
+ * a "Sold by" AGENT (a picker listing every commission-eligible agent on the
+ * device). All three decided money against a commission engine that is live and
+ * backdated to 1 June.
+ *
+ * They are gone. Price is derived from the pack, channel and attribution from
+ * the caller's own agent record. What is left to enter is the farmer, the pack
+ * and the quantity — the three things only the person in the shamba knows.
+ *
+ * The derived values are still SHOWN, read-only. A WAO reading a price back to a
+ * farmer needs to see it; what they must not be able to do is disagree with it.
  */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -54,7 +65,7 @@ fun OrderCreateScreen(
 ) {
     val state by viewModel.uiState.collectAsStateWithLifecycle()
     var farmerMenuExpanded by remember { mutableStateOf(false) }
-    var skuMenuExpanded by remember { mutableStateOf(false) }
+    val blocked = viewModel.blockedReason(state)
 
     Scaffold(
         topBar = {
@@ -79,7 +90,7 @@ fun OrderCreateScreen(
             // ── Farmer picker (a Farm IS the farmer record) ────────────────
             val selectedFarmerName =
                 state.farmers.firstOrNull { it.id == state.selectedFarmerId }?.name
-                    ?: "No farmers — pull to refresh"
+                    ?: "No farmers — register one first"
             ExposedDropdownMenuBox(
                 expanded = farmerMenuExpanded,
                 onExpandedChange = { farmerMenuExpanded = it },
@@ -112,36 +123,15 @@ fun OrderCreateScreen(
                 }
             }
 
-            // ── SKU (pack size) ────────────────────────────────────────────
-            ExposedDropdownMenuBox(
-                expanded = skuMenuExpanded,
-                onExpandedChange = { skuMenuExpanded = it },
-            ) {
-                OutlinedTextField(
-                    value = state.sku,
-                    onValueChange = {},
-                    readOnly = true,
-                    label = { Text("Pack size") },
-                    trailingIcon = {
-                        ExposedDropdownMenuDefaults.TrailingIcon(expanded = skuMenuExpanded)
-                    },
-                    modifier = Modifier
-                        .menuAnchor()
-                        .fillMaxWidth(),
-                )
-                ExposedDropdownMenu(
-                    expanded = skuMenuExpanded,
-                    onDismissRequest = { skuMenuExpanded = false },
-                ) {
-                    SkuOptions.forEach { sku ->
-                        DropdownMenuItem(
-                            text = { Text(sku) },
-                            onClick = {
-                                viewModel.onSkuSelected(sku)
-                                skuMenuExpanded = false
-                            },
-                        )
-                    }
+            // ── Pack size — the ONLY thing that decides the price ───────────
+            Text("Pack size", style = MaterialTheme.typography.labelLarge)
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                KumeaNPack.catalogue.forEach { pack ->
+                    FilterChip(
+                        selected = state.pack == pack,
+                        onClick = { viewModel.onPackSelected(pack) },
+                        label = { Text(pack.label) },
+                    )
                 }
             }
 
@@ -151,7 +141,7 @@ fun OrderCreateScreen(
             OutlinedTextField(
                 value = state.qty,
                 onValueChange = viewModel::onQtyChange,
-                label = { Text("Quantity") },
+                label = { Text("Number of sachets") },
                 keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
                 singleLine = true,
                 isError = qtyInvalid,
@@ -161,55 +151,54 @@ fun OrderCreateScreen(
                 modifier = Modifier.fillMaxWidth(),
             )
 
-            // ── Unit price (integer cents under the hood; KES at the edge) ─
-            val priceInvalid = state.unitPrice.isNotBlank() &&
-                (state.parsedUnitPrice == null || state.parsedUnitPrice!! <= 0)
-            OutlinedTextField(
-                value = state.unitPrice,
-                onValueChange = viewModel::onUnitPriceChange,
-                label = { Text("Unit price (KES)") },
-                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
-                singleLine = true,
-                isError = priceInvalid,
-                supportingText = {
-                    val total = state.lineTotalPreview
-                    when {
-                        priceInvalid -> Text("More than zero, up to 2 decimals")
-                        total != null -> Text("Total: ${Money.formatCents(total)}")
-                    }
-                },
-                modifier = Modifier.fillMaxWidth(),
-            )
+            HorizontalDivider()
 
-            // ── Channel (REQUIRED — no default) ────────────────────────────
-            Text("Channel", style = MaterialTheme.typography.labelLarge)
-            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                OrderChannels.forEach { channel ->
-                    FilterChip(
-                        selected = state.channel == channel,
-                        onClick = { viewModel.onChannelSelected(channel) },
-                        label = { Text(channel) },
+            // ── The derived money, read-only ───────────────────────────────
+            //
+            // Shown because a WAO reads the price back to the farmer out loud.
+            // NOT editable, because the matrix decides it — see PriceMatrix.
+            Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                ) {
+                    Text(
+                        "Price per ${state.pack.label} sachet",
+                        style = MaterialTheme.typography.bodyMedium,
+                    )
+                    Text(
+                        Money.formatCents(state.unitPriceCents),
+                        style = MaterialTheme.typography.bodyMedium,
                     )
                 }
-            }
-
-            // ── Agent (commercial attribution; officers never offered) ─────
-            if (state.agents.isNotEmpty()) {
-                Text("Sold by agent (optional)", style = MaterialTheme.typography.labelLarge)
-                Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                    state.agents.forEach { agent ->
-                        FilterChip(
-                            // Selection keys on the stable UUID (attribution);
-                            // the label still shows the human-readable code.
-                            selected = state.selectedAgentId == agent.id,
-                            onClick = { viewModel.onAgentSelected(agent.id) },
-                            label = { Text("${agent.agentCode} (${agent.role}, ${agent.region})") },
-                        )
+                state.lineTotalCents?.let { total ->
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                    ) {
+                        Text("Total", style = MaterialTheme.typography.titleMedium)
+                        Text(Money.formatCents(total), style = MaterialTheme.typography.titleMedium)
                     }
                 }
             }
 
-            state.error?.let {
+            // ── Who this is attributed to — stated, never chosen ────────────
+            state.seller?.let { seller ->
+                val attribution = when {
+                    seller.attributedAgentCode != null -> "Sold by you (${seller.attributedAgentCode})"
+                    seller.attributedAgentId != null -> "Sold by you"
+                    // A dealer records the channel and attributes to nobody:
+                    // the dealer's margin is Order-level, not a commission rule.
+                    else -> "Recorded as ${seller.channel ?: "—"} — no agent commission"
+                }
+                Text(
+                    text = attribution,
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
+
+            (state.error ?: blocked)?.let {
                 Text(
                     text = it,
                     color = MaterialTheme.colorScheme.error,
@@ -220,7 +209,7 @@ fun OrderCreateScreen(
             Button(
                 onClick = { viewModel.saveOrder(onSuccess = onBack) },
                 modifier = Modifier.fillMaxWidth(),
-                enabled = !state.isSaving,
+                enabled = !state.isSaving && blocked == null,
             ) {
                 if (state.isSaving) {
                     CircularProgressIndicator(

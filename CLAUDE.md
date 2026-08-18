@@ -486,14 +486,37 @@ separate, so this is strictly safer than what was specified.
 
 ### Still open
 
-- **Agent home "New farmer" still mis-attributes.** `KumeaNavHost` routes it to
-  `Routes.FARM_CREATE`; `Routes.FARMER_REGISTER` is correct and the server already
-  permits a `village_agent`. One line, but it belongs with step 5's roster.
-- **Batch B — the money rules.** Three pack sizes (50/100/150 g), price derived
-  from pack size rather than typed, selling agent derived from the caller rather
-  than picked. Numbers are in `PRICE-MATRIX-LOCKED.md` (revised 12 Aug).
-  `SkuOptions` still holds the superseded 14 Jun codes and says so in a comment.
-  Land before the first real sale.
+- ✅ **Agent home "New farmer" — FIXED (18 Aug).** `KumeaNavHost` now routes it
+  to `Routes.FARMER_REGISTER`. It is NOT what the ticket called it: no path has
+  ever set `referrerAgentId` (`FarmerRegistrationTest` has pinned that since step
+  4). The cost was that a farmer an agent added went through the SELF-registration
+  screen, so the local row had no `ward` and no `registeredByAgentId` — it never
+  joined the register it was meant to, and ward-grouping the ~395 research farms
+  silently missed it. The server stamps both on pull, so the damage was local and
+  temporary; the rows are still wrong until they sync.
+- ✅ **Batch B — the CLIENT half is done (18 Aug, KWAP-06).** Price derived from
+  pack (`domain/model/KumeaNPack.kt` + `PriceMatrix` — the single lookup site),
+  channel and selling agent derived from the caller's own `AgentEntity.role`.
+  The typed price field, the channel chip row and the "Sold by" picker are gone.
+  Catalogue is `KUMEA-N-50G` / `-100G` / `-150G` at 600 / 1,050 / 1,500.
+- 🔴 **Batch B — the SERVER half is NOT a seed, and is not done.** KWAP-06 §3.6
+  assumed the per-pack commission ladder could be seeded. It cannot:
+  `CommissionRuleTier` is keyed on `minFarmers` ALONE and `rateCents` is
+  documented as "per-sachet rate for this band", so `computeAccruedCents` does
+  `rate × sachets` with **no pack-size dimension anywhere**.
+  `scripts/seed-commission-rule.ts` seeds exactly the 150 g ladder
+  (30000/35000/40000 at 0/20/50 farmers). So a 50 g sale accrues the 150 g rate:
+  **300 against a 600 sale where the matrix says 165.** Adding the 100 g pack
+  adds a third size with the same gap (300 vs 235). Needs a migration + an
+  accrual change, on a live backdated engine — a decision, not a chore.
+- ❓ **Unknown: are the commission rates seeded in production at all?**
+  `seed-commission-rule.ts` is deliberately kept out of migrations ("structure
+  auto-deploys, real money is turned on by hand"). If it never ran, the engine
+  accrues zero and the gap above is theoretical; if it ran, it is live money.
+  One query answers it and nothing else can:
+  `SELECT role, type, rate FROM commission_rules WHERE deleted_at IS NULL` plus
+  `SELECT min_farmers, rate_cents FROM commission_rule_tiers`. The API's DB is
+  Railway-internal, so this needs a registered Railway SSH key or a psql session.
 - 🟢 **`plantings` server half is DEPLOYED (18 Aug).** `kumea-api` `7cb03d2` on
   `main`, live on Railway: `Planting` model + module + migration
   `20260818120000_kwap03v2_plantings_and_note_source`, plus the
@@ -578,6 +601,12 @@ the week of 4 Aug. When you find a doc that disagrees with the code, fix the doc
 the same session — that is how this one got expensive.
 
 The Kumea N rename is done in the app (both locales, `CostCategory`, the
-FarmHome sheet). What is NOT done is the SKU catalogue: `SkuOptions` still reads
-`BFX-150G` / `BFX-50G`. `orders.sku` is free TEXT server-side with no CHECK, so
-renaming is safe whenever Batch B lands; historical rows keep `BFX-`.
+FarmHome sheet) **and the SKU catalogue now reads `KUMEA-N-50G` / `-100G` /
+`-150G`** (KWAP-06 §3.5, 18 Aug; `SkuOptions` and its `BFX-` codes are gone).
+`orders.sku` is free TEXT server-side with no CHECK, so historical rows keep
+`BFX-` and `PriceMatrix` deliberately refuses to price them — it resolves what a
+NEW sale costs, and an unknown SKU throws rather than defaulting to 0.
+
+The remaining "Biofix" occurrences in the tree are all HISTORICAL comments
+explaining the v12 `BIOFIX` → `OTHER` migration and why never to add a client
+enum value the server lacks. Leave them; they are the reason the rule exists.
