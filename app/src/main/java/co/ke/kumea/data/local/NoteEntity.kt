@@ -50,7 +50,7 @@ data class NoteEntity(
     // category, and the sign is still derived from `type`, never from this.
     val costCategory: CostCategory? = null,
     /**
-     * ── THE LINKED-RECORD PAIR (KWAP-03-V2 §2.5). DEVICE-ONLY. ───────────────
+     * ── THE LINKED-RECORD PAIR (KWAP-03-V2 §2.5) ─────────────────────────────
      *
      * [sourceType] is a [NoteSource] constant and [sourceId] the id of the row
      * that generated this note. Set together or not at all: a note with one and
@@ -62,19 +62,19 @@ data class NoteEntity(
      * seed again by hand and "invested" silently doubles. With it, the ledger
      * renders the row read-only and taps through to the planting.
      *
-     * 🔴 NOT ON THE WIRE, and this is not an oversight. The server's
-     * `CreateNoteDto` whitelists id/fieldId/type/body/amountCents/costCategory/
-     * occurredAt and runs `ValidationPipe({ forbidNonWhitelisted: true })` — two
-     * extra keys would be a 400, and `NoteRepository.pushPending()` treats 400
-     * as retryable, so every seed-cost note would sit at the head of the offline
-     * queue for ever. That is the KWAP-01 `cropType`/`acres`/`useGps` bug and the
-     * `kept`/`sold` bug, which is the rule CLAUDE.md states plainly: never add a
-     * client field the server does not already accept.
+     * ── ON THE WIRE SINCE 18 AUG (kumea-api `7cb03d2`, deployed) ─────────────
      *
-     * Consequence, handled in `NoteRepository.pullSince()`: the server cannot
-     * return these, so a pull carries them forward from the local row instead of
-     * writing null. Losing the link would un-hide the row in the ledger and
-     * re-open the double-count.
+     * `CreateNoteDto`/`UpdateNoteDto` whitelist both and `NotesService` stores
+     * them. Before that they were device-only, and the reason is the standing
+     * rule rather than an oversight: the API runs
+     * `ValidationPipe({ forbidNonWhitelisted: true })`, so either key was a 400,
+     * and a 400 was retried for ever — the KWAP-01 `cropType`/`acres`/`useGps`
+     * bug and the `kept`/`sold` bug, twice. **Never add a client field the
+     * server does not already accept.** The server went first here.
+     *
+     * `NoteRepository.pullSince()` still falls back to the local value when the
+     * server sends null, for the notes that synced during the four days between
+     * the client shipping these columns and the server learning them.
      */
     val sourceType: String? = null,
     val sourceId: String? = null,
@@ -103,8 +103,12 @@ enum class NoteType {
 }
 
 /**
- * What generated a note, for [NoteEntity.sourceType]. Device-only, like the
- * columns themselves. A note with no source was typed by a human.
+ * What generated a note, for [NoteEntity.sourceType]. A note with no source was
+ * typed by a human.
+ *
+ * The server stores this as a plain string with no enum and no CHECK, so a new
+ * value here needs no migration — but it does need the client and the analysis
+ * to agree on the spelling.
  */
 object NoteSource {
     /** Written by the planting flow's seed-cost question (§2.5). */

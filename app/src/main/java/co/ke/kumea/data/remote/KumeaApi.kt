@@ -208,10 +208,9 @@ interface KumeaApi {
 
     // ---- Plantings (KWAP-03-V2 §2.3) ----
     //
-    // ⚠️ THESE ROUTES DO NOT EXIST ON THE SERVER YET. Declared so the repository
-    // is complete and reviewable in one commit, and unreachable in practice
-    // because PlantingRepository is not bound into Set<SyncableRepository>.
-    // See PlantingDtos.kt. Diff the bodies against the real DTO before binding.
+    // Live since 18 Aug (kumea-api 7cb03d2). The bodies were diffed by hand
+    // against the deployed CreatePlantingDto/UpdatePlantingDto — see
+    // PlantingDtos.kt for what that diff changed and why the scale matters.
 
     @GET("plantings")
     suspend fun getPlantings(

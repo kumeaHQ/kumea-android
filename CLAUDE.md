@@ -79,9 +79,9 @@ app/src/main/java/co/ke/kumea/
     screen/order/              # OrderCreate
 ```
 
-Tests live in `app/src/test/java/co/ke/kumea/` (24 files, 268 tests: sync,
-repository, persona, money, phone, token store, schema/enum/wire contracts,
-location capture, farm profile). There is
+Tests live in `app/src/test/java/co/ke/kumea/` (25 files, 154 per variant / 308
+across debug+release: sync, repository, persona, money, phone, token store,
+schema/enum/wire contracts, location capture, farm profile). There is
 no `androidTest` source set — which is why `SchemaMigrationTest` guards the
 migration from the JVM instead of with Room's `MigrationTestHelper`.
 
@@ -225,8 +225,11 @@ The concrete `FarmSyncWorker` / `FieldSyncWorker` / `NoteSyncWorker` are **gone*
 **Adding a syncable entity is one `@Binds @IntoSet` in `di/RepositoryModule.kt`
 plus `: SyncableRepository` on the repository. Do not write a new Worker class.**
 
-Binding order in `RepositoryModule` is agent → farm → field → harvest → note →
-order, matching FK dependency (Hilt's `LinkedHashSet` preserves it). Order is
+Binding order in `RepositoryModule` is agent → farm → planting → field →
+harvest → note → order → kumeaNReceived, matching FK dependency (Hilt's
+`LinkedHashSet` preserves it). Planting sits after farm (its only FK parent) and
+ahead of note, so a planting's linked seed Purchase never carries a `sourceId`
+pointing at a row the server has not seen. Order is
 belt-and-braces only: each repository's `pushPending()` defers a row whose FK
 parent isn't on the server yet and retries next cycle. Correctness lives in those
 guards, not in the iteration order.
@@ -425,8 +428,9 @@ Four decisions taken during the build, each recorded where it applies:
 
 `kumea_n_received` is fully written including push/pull and **is now bound**
 into `Set<SyncableRepository>` (`958552e`), because its server patch deployed.
-The pattern it established is still live, though: **`plantings` is written and
-deliberately NOT bound** — see KWAP-03-V2 below.
+**`plantings` followed exactly the same pattern** — written 14 Aug, unbound
+until its server half deployed, bound 18 Aug. That sequence is the rule now:
+the server goes first, the wire contract is diffed by hand, then the binding.
 
 **The ledger now has no entry point.** Removing the farmer page's money card
 (§5.4) removed the only navigation into `Routes.LEDGER`. The route and
@@ -453,18 +457,21 @@ What the eight ⚠️VERIFY checks actually found, since two contradicted the ti
 - V2's backfill is zero-row on every device checked. V3 found no ACTIVITY row
   carrying money. V4 was pure removal (the picker already auto-selected).
 
-**`plantings` is written, complete, and NOT bound into `Set<SyncableRepository>`.**
-`kumea-api` has no Planting model, controller or DTO — a push would 404, and 404
-is not terminal, so binding it early would poison the queue exactly as
-`cropType`/`acres`/`useGps` and `kept`/`sold` did. The `@Binds @IntoSet` is
-commented out in `RepositoryModule` with the conditions for arming it.
-`PlantingDtos.kt` is a **proposal, not a contract** — diff it by hand first.
+**`plantings` is bound and syncing as of 18 Aug.** It shipped unbound on 14 Aug
+because `kumea-api` had no Planting model, controller or DTO — a push would 404,
+which would have poisoned the queue exactly as `cropType`/`acres`/`useGps` and
+`kept`/`sold` did. Armed once the server half deployed (`7cb03d2`) and after
+`PlantingCreateRequest` was diffed against the real `CreatePlantingDto` key by
+key and type by type. `PlantingDtos.kt` said of itself "a proposal, not a
+contract"; it is the contract now, and `PlantingWireContractTest` pins it.
 
-**`notes.sourceType` / `sourceId` are device-only for the same reason.** The
-server's `CreateNoteDto` does not whitelist them and runs
-`forbidNonWhitelisted: true`. `NoteRepository.pullSince()` carries them forward
-from the local row; losing the link would un-hide the seed Purchase and re-open
-the double-count.
+**`notes.sourceType` / `sourceId` are on the wire too, same date, same reason.**
+`CreateNoteDto`/`UpdateNoteDto` whitelist them and `NotesService` stores them.
+`NoteRepository.pullSince()` still falls back to the local value when the server
+sends null — notes written by the planting flow between 14 and 18 Aug pushed
+before the server could accept the keys, so the server holds those rows with a
+null source. Reading `server.x` outright would write that null back, un-hide the
+seed Purchase and re-open the double-count.
 
 Two repository bugs this ticket had to fix because §2.5 made them load-bearing:
 `NoteRepository.updateLocal`/`deleteLocal` and `HarvestRepository.deleteLocal`
@@ -494,10 +501,10 @@ separate, so this is strictly safer than what was specified.
   (confirmed in the deploy log); all five `/plantings` routes answer 401 rather
   than 404; `/health` stayed 200 throughout. 261 tests green.
 
-  🔴 **The client is still unbound, so this changes nothing yet.** The
-  `@Binds @IntoSet` in `RepositoryModule` remains commented out — arming it is
-  now the smallest high-value change available, and it is what the review's §2.1
-  ("the research dataset half-lives on handsets") is actually waiting on.
+  ✅ **The client is bound, so plantings now sync.** `PlantingRepository` is in
+  `Set<SyncableRepository>`, and `notes.sourceType`/`sourceId` are on the wire.
+  Verified by build and test only — **the real proof is one push from a
+  handset**, which is the walkthrough's job.
 
   The by-hand wire diff corrected two of the server ticket's own
   recommendations, and the client did **not** move:
@@ -508,11 +515,10 @@ separate, so this is strictly safer than what was specified.
     `Quantity.parseToCenti` matches at most two and `pullSince` drops a row that
     fails to parse.
 
-  Two things belong in the commit that arms it — both now unblocked:
-  1. Uncomment the `@Binds @IntoSet` and confirm with one real push on a handset.
-  2. **Add `sourceType`/`sourceId` to `NoteCreateRequest` / `NoteUpdateRequest` /
-     `NoteResponse`.** The server accepts and stores them now; the client still
-     does not send them, so the link stays device-only until it does.
+  Both follow-ups landed with the binding: the `@Binds @IntoSet` is uncommented,
+  and `sourceType`/`sourceId` are on `NoteCreateRequest` / `NoteUpdateRequest` /
+  `NoteResponse`. What is NOT done is the on-device confirmation — nothing here
+  has been exercised against the deployed API by a real request.
 
 - ⚠️ **Backfilled plantings can never sync.** `MIGRATION_13_14` writes them with
   `pendingSync = 0`, so `getPendingSync()` never returns them and no push is ever

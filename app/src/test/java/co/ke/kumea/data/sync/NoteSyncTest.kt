@@ -3,6 +3,7 @@ package co.ke.kumea.data.sync
 import co.ke.kumea.data.local.CostCategory
 import co.ke.kumea.data.local.NoteDao
 import co.ke.kumea.data.local.NoteEntity
+import co.ke.kumea.data.local.NoteSource
 import co.ke.kumea.data.local.NoteType
 import co.ke.kumea.data.local.SyncAction
 import co.ke.kumea.data.local.SyncConflictDao
@@ -167,6 +168,122 @@ class NoteSyncTest {
         dao.pending = listOf(stored)
         repository.pushPending()
         assertEquals("FERTILISER", sent?.costCategory)
+    }
+
+    // ── KWAP-03-V2 §2.5: the source link, on the wire since 18 Aug ───────────
+    //
+    // These two keys were device-only from 14 to 18 Aug because the server's
+    // CreateNoteDto did not whitelist them and forbidNonWhitelisted turns an
+    // undeclared key into a 400. kumea-api 7cb03d2 whitelists AND stores them.
+    //
+    // What they protect: the ledger renders a linked seed Purchase read-only, so
+    // a farmer cannot look at a row they don't recognise and enter seed cost a
+    // second time. Lose the link and "invested" silently doubles.
+
+    @Test
+    fun `push sends the source link so a seed Purchase stays linked on every device`() = runBlocking {
+        val dao = FakeNoteDao().apply {
+            pending = listOf(
+                NoteEntity(
+                    id = "note-1", fieldId = "field-1", type = NoteType.PURCHASE,
+                    body = "Seed — soybean", amountCents = 250000L,
+                    costCategory = CostCategory.SEED,
+                    sourceType = NoteSource.PLANTING, sourceId = "planting-uuid",
+                    occurredAt = "2026-08-14", createdAt = "t", updatedAt = "t",
+                    deletedAt = null, pendingSync = true, syncAction = SyncAction.CREATE,
+                ),
+            )
+        }
+        var sent: NoteCreateRequest? = null
+        val api = object : FakeKumeaApi() {
+            override suspend fun createNote(note: NoteCreateRequest): Response<NoteResponse> {
+                sent = note
+                return Response.success(noteResponse("250000", updatedAt = "t2"))
+            }
+        }
+        val repository = NoteRepository(dao, SyncRejectionRecorder(NoOpConflictDao()), api)
+
+        repository.pushPending()
+
+        assertEquals(NoteSource.PLANTING, sent?.sourceType)
+        assertEquals("planting-uuid", sent?.sourceId)
+    }
+
+    @Test
+    fun `a hand-typed note sends no source link at all`() = runBlocking {
+        val dao = FakeNoteDao().apply {
+            pending = listOf(
+                NoteEntity(
+                    id = "note-1", fieldId = "field-1", type = NoteType.SALE, body = "Sold 4 bags",
+                    amountCents = 1440000L, occurredAt = "2026-12-01", createdAt = "t",
+                    updatedAt = "t", deletedAt = null, pendingSync = true,
+                    syncAction = SyncAction.CREATE,
+                ),
+            )
+        }
+        var sent: NoteCreateRequest? = null
+        val api = object : FakeKumeaApi() {
+            override suspend fun createNote(note: NoteCreateRequest): Response<NoteResponse> {
+                sent = note
+                return Response.success(noteResponse("1440000", updatedAt = "t2"))
+            }
+        }
+        val repository = NoteRepository(dao, SyncRejectionRecorder(NoOpConflictDao()), api)
+
+        repository.pushPending()
+
+        assertNull(sent?.sourceType)
+        assertNull(sent?.sourceId)
+    }
+
+    @Test
+    fun `pull takes the link from the server now that the server has it`() = runBlocking {
+        val dao = FakeNoteDao()
+        val api = object : FakeKumeaApi() {
+            override suspend fun getNotes(since: String?, includeDeleted: Boolean): List<NoteResponse> =
+                listOf(
+                    noteResponse("250000").copy(
+                        type = "PURCHASE",
+                        sourceType = NoteSource.PLANTING,
+                        sourceId = "planting-uuid",
+                    ),
+                )
+        }
+        val repository = NoteRepository(dao, SyncRejectionRecorder(NoOpConflictDao()), api)
+
+        repository.pullSince()
+
+        val pulled = dao.upsertAlls.single().single()
+        assertEquals(NoteSource.PLANTING, pulled.sourceType)
+        assertEquals("planting-uuid", pulled.sourceId)
+    }
+
+    @Test
+    fun `pull keeps a local link the server does not know about`() = runBlocking {
+        // The four-day window: notes written by the planting flow between 14 and
+        // 18 Aug pushed BEFORE the server could accept these keys, so the server
+        // holds them with a null source while this device holds the link.
+        // Reading server.sourceType outright would write that null back, un-hide
+        // the seed Purchase in the ledger, and re-open the double-count.
+        val local = NoteEntity(
+            id = "note-1", fieldId = "field-1", type = NoteType.PURCHASE,
+            body = "Seed — soybean", amountCents = 250000L, costCategory = CostCategory.SEED,
+            sourceType = NoteSource.PLANTING, sourceId = "planting-uuid",
+            occurredAt = "2026-08-14", createdAt = "t", updatedAt = "t",
+            deletedAt = null, pendingSync = false, syncAction = SyncAction.UPDATE,
+        )
+        val dao = FakeNoteDao().apply { upserts.add(local) }
+        val api = object : FakeKumeaApi() {
+            override suspend fun getNotes(since: String?, includeDeleted: Boolean): List<NoteResponse> =
+                listOf(noteResponse("250000").copy(type = "PURCHASE"))  // no source fields
+        }
+        val repository = NoteRepository(dao, SyncRejectionRecorder(NoOpConflictDao()), api)
+
+        repository.pullSince()
+
+        val pulled = dao.upsertAlls.single().single()
+        assertEquals("the local link must survive a server that has none", NoteSource.PLANTING, pulled.sourceType)
+        assertEquals("planting-uuid", pulled.sourceId)
     }
 
     @Test

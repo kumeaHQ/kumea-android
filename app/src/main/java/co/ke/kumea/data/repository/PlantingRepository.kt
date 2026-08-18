@@ -30,18 +30,17 @@ import javax.inject.Singleton
  * Offline-first Planting sync (KWAP-03-V2 §2.3), same shape as
  * [HarvestRepository] — parent is Farm rather than Field.
  *
- * ⚠️ NOT BOUND INTO `Set<SyncableRepository>`. There is no `/plantings` route on
- * the server (checked against `kumea-api c83917f`), so every push would 404. The
- * push/pull code is written and reviewable; the single `@Binds @IntoSet` that
- * arms it is commented out in `di/RepositoryModule.kt`. Uncomment it in the
- * commit that verifies the deployed contract.
+ * ✅ BOUND into `Set<SyncableRepository>` since 18 Aug, once `/plantings` was
+ * deployed (`kumea-api` `7cb03d2`) and the wire contract had been diffed by
+ * hand. It sat unbound from 14 Aug because the route did not exist and every
+ * push would have 404'd.
  *
- * The stakes of getting that wrong have dropped, and deliberately so. Under the
+ * The stakes of getting that wrong had already dropped, deliberately. Under the
  * old `{403}` terminal set, binding early meant every planting re-sent for ever
  * at the head of the queue — unrecoverable without a code change. [RetryPolicy]
  * now bounds a 404 at three attempts and surfaces the payload, so a premature
- * binding costs three requests and a visible rejection instead. That is the
- * whole point of fixing the classifier first: the server half can now land
+ * binding would have cost three requests and a visible rejection instead. That
+ * is the whole point of fixing the classifier first: the server half could land
  * incrementally rather than having to be atomic with the client.
  *
  * ── THE LINKED PURCHASE (§2.5) ──────────────────────────────────────────────
@@ -299,11 +298,10 @@ class PlantingRepository @Inject constructor(
     /**
      * Single exit for every non-2xx (see [RetryPolicy]).
      *
-     * This matters more here than anywhere else: `plantings` has NO server route
-     * yet, so every push would 404. Under the old `{403}` terminal set that was
-     * an infinite retry, which is precisely why this repository is unbound. With
-     * the bounded 404 budget a premature binding degrades to three attempts and
-     * a surfaced rejection with the payload intact — recoverable, not fatal.
+     * The route exists now, so the live failure modes are 409 (server won on
+     * `updatedAt`) and 400 (a body the deployed DTO refuses). Both are terminal,
+     * and both record the payload to `audit_sync_conflicts` before they stop — a
+     * WAO's planting is never dropped because a wire contract drifted.
      */
     private suspend fun applyFailure(
         planting: PlantingEntity,

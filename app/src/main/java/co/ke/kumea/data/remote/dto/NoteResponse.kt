@@ -18,6 +18,10 @@ data class NoteResponse(
     // Optional cost label (Ticket 2.1) — the CostCategory enum name, or null.
     val costCategory: String? = null,
     val occurredAt: String,
+    // See NoteCreateRequest. Defaulted to null so a response from a server that
+    // predates the whitelist still parses — the whole page fails otherwise.
+    val sourceType: String? = null,
+    val sourceId: String? = null,
     val createdAt: String,
     val updatedAt: String,
     val deletedAt: String? = null,

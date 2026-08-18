@@ -7,6 +7,7 @@ import co.ke.kumea.data.repository.HarvestRepository
 import co.ke.kumea.data.repository.KumeaNReceivedRepository
 import co.ke.kumea.data.repository.NoteRepository
 import co.ke.kumea.data.repository.OrderRepository
+import co.ke.kumea.data.repository.PlantingRepository
 import co.ke.kumea.data.sync.SyncableRepository
 import dagger.Binds
 import dagger.Module
@@ -19,9 +20,9 @@ import dagger.multibindings.IntoSet
  *
  * Each repository that implements SyncableRepository is bound into a
  * Set<SyncableRepository> that SyncWorker injects. Declaration order is
- * agent → farm → field → harvest → note → order → kumeaNReceived, so the Set's
- * iteration order matches the FK dependency order (LinkedHashSet preserves
- * declaration order).
+ * agent → farm → planting → field → harvest → note → order → kumeaNReceived, so
+ * the Set's iteration order matches the FK dependency order (LinkedHashSet
+ * preserves declaration order).
  * Agent leads because Farm.referrerAgentId attributes to an Agent, so the agent
  * must reach the server before a farmer registered with it as referrer; Order
  * trails because Order.farmerId reads from Farm and Order.agentCode resolves to
@@ -43,6 +44,16 @@ abstract class RepositoryModule {
     @Binds
     @IntoSet
     abstract fun bindFarmSyncable(repo: FarmRepository): SyncableRepository
+
+    // Planting follows farm: Planting.farmId → Farm, its only FK parent. It also
+    // sits AHEAD of note deliberately — a planting that records a seed cost
+    // writes a PURCHASE note carrying sourceId = the planting's id, and pushing
+    // the planting first means that link never points at a row the server has
+    // not seen. Nothing enforces it (sourceId has no FK, by design), so this is
+    // coherence rather than correctness.
+    @Binds
+    @IntoSet
+    abstract fun bindPlantingSyncable(repo: PlantingRepository): SyncableRepository
 
     @Binds
     @IntoSet
@@ -85,30 +96,24 @@ abstract class RepositoryModule {
     @IntoSet
     abstract fun bindKumeaNReceivedSyncable(repo: KumeaNReceivedRepository): SyncableRepository
 
-    // ── PlantingRepository — WRITTEN, DELIBERATELY NOT BOUND ─────────────────
+    // ── WHY PLANTING WAS UNBOUND UNTIL 18 AUG, AND WHAT ARMED IT ─────────────
     //
-    // KWAP-03-V2 §2.3 adds `plantings`, and §4 asks for full push + pull. The
-    // repository has both. What does not exist is the other end: `kumea-api` at
-    // c83917f (main, deployed) has no Planting model, no controller and no DTO —
-    // the only planting-shaped thing on the server is `fields.plantedAt`.
+    // `bindPlantingSyncable` above sat commented out from 14 to 18 Aug. The
+    // repository had full push and pull the whole time; what did not exist was
+    // the other end — `kumea-api` had no Planting model, controller or DTO, so
+    // every push would 404. Plantings were device-only, which is the risk the
+    // 18 Aug review named as structural: the dataset KWAP Year 0 exists to
+    // produce, accumulating on phones carried through rural Kenya.
     //
-    // Binding this now would push at a route that returns 404, and 404 is NOT in
-    // the terminal set (only 403 and 409 are), so every planting a WAO records
-    // would sit at the head of the offline queue and re-send on every sync cycle
-    // for ever. That is the same failure the `cropType`/`acres`/`useGps` and
-    // `kept`/`sold` bugs caused, and the same reason KWAP-03 shipped
-    // `kumea_n_received` unbound until its server patch deployed.
+    // Armed by `kumea-api` `7cb03d2` (deployed): the five routes answer, the
+    // migration is applied, and `PlantingCreateRequest` was diffed against the
+    // real `CreatePlantingDto` key by key and type by type first. That diff
+    // moved the SERVER twice — the ticket had proposed `seedKgCenti` /
+    // `plantedAreaCenti` as JSON numbers, and 4-dp serialisation — because the
+    // client was already on a handset and this file was not.
     //
-    // Plantings are device-only until then. Nothing is lost: the rows are in
-    // Room, they carry `pendingSync = true`, and the first successful push after
-    // this line is uncommented will send every one of them.
-    //
-    // 🔴 BEFORE UNCOMMENTING: diff PlantingCreateRequest against the server's
-    // real CreatePlantingDto by hand — every key AND the numeric wire types —
-    // then confirm the route with one real push. The DTO in this repo is a
-    // proposal, not a contract.
-    //
-    // @Binds
-    // @IntoSet
-    // abstract fun bindPlantingSyncable(repo: PlantingRepository): SyncableRepository
+    // The precedent it follows is `kumea_n_received`, which shipped unbound for
+    // the same reason and was bound in `958552e` once its server patch landed.
+    // The precedent it sets: **the server goes first, and the wire contract is
+    // diffed by hand before the binding, not after.**
 }

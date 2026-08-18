@@ -169,6 +169,10 @@ class NoteRepository @Inject constructor(
                             // Enum → wire String (the name). Null = uncategorised.
                             costCategory = note.costCategory?.name,
                             occurredAt = note.occurredAt,
+                            // §2.5, on the wire since 18 Aug. Both null for a
+                            // hand-typed note.
+                            sourceType = note.sourceType,
+                            sourceId = note.sourceId,
                         )
                     )
                     if (response.isSuccessful) {
@@ -188,6 +192,8 @@ class NoteRepository @Inject constructor(
                             amountCents = note.amountCents?.toString(),
                             costCategory = note.costCategory?.name,
                             occurredAt = note.occurredAt,
+                            sourceType = note.sourceType,
+                            sourceId = note.sourceId,
                             updatedAt = note.updatedAt,
                         )
                     )
@@ -235,14 +241,26 @@ class NoteRepository @Inject constructor(
 
         if (serverNotes.isEmpty()) return 0
 
-        // sourceType/sourceId are DEVICE-ONLY — the server's note DTO does not
-        // whitelist them (NoteEntity explains why they cannot be added), so it
-        // cannot echo them back. Rebuilding a row from the server alone would
-        // write null over the link and un-hide the seed Purchase in the ledger,
-        // re-opening the double-count §2.5 exists to prevent. Carried forward
-        // from the local row, exactly as farms and harvests carry their own
-        // device-only columns. WHEN THE SERVER LEARNS THESE FIELDS, they move to
-        // `server.x` in the same commit that adds them to NoteResponse.
+        // sourceType/sourceId ARE on the wire now (kumea-api 7cb03d2, deployed
+        // 18 Aug), so the server value leads — but the local one still backs it
+        // up, and that fallback is not vestigial.
+        //
+        // Notes written by the planting flow between 14 and 18 Aug pushed BEFORE
+        // the server could accept these keys, so the server holds those rows
+        // with a null source while this device holds the link. Reading
+        // `server.sourceType` outright would write that null back, un-hide the
+        // seed Purchase in the ledger, and re-open the double-count §2.5 exists
+        // to prevent. `server.x ?: local?.x` keeps them.
+        //
+        // Nothing ever clears a link — a cleared seed cost soft-deletes the
+        // whole note (PlantingRepository.updateLocal) — so the fallback can
+        // never resurrect a link that was deliberately removed.
+        //
+        // NOT SELF-HEALING, and knowingly so: those rows keep the link on the
+        // device that wrote them and look like ordinary editable purchases
+        // anywhere else. Re-pushing them would mean marking synced rows pending
+        // from inside a pull, which is a data migration wearing a sync's
+        // clothes. Small, known population; new rows carry the link properly.
         val existing = noteDao.getByIds(serverNotes.map { it.id }).associateBy { it.id }
 
         val localEntities = serverNotes.map { server ->
@@ -256,8 +274,8 @@ class NoteRepository @Inject constructor(
                 amountCents = server.amountCents?.toLong(),
                 // wire String → enum (by name); null stays uncategorised.
                 costCategory = server.costCategory?.let { CostCategory.valueOf(it) },
-                sourceType = local?.sourceType,
-                sourceId = local?.sourceId,
+                sourceType = server.sourceType ?: local?.sourceType,
+                sourceId = server.sourceId ?: local?.sourceId,
                 occurredAt = server.occurredAt,
                 createdAt = server.createdAt,
                 updatedAt = server.updatedAt,

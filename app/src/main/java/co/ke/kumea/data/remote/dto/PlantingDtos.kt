@@ -3,33 +3,37 @@ package co.ke.kumea.data.remote.dto
 import kotlinx.serialization.Serializable
 
 /**
- * ⚠️ THIS CONTRACT IS UNVERIFIED. THERE IS NO `/plantings` RESOURCE YET.
+ * ✅ VERIFIED AGAINST THE DEPLOYED SERVER, 18 AUG 2026.
  *
- * Checked 13 Aug against `kumea-api` at `c83917f` (main, deployed): the only
- * planting-shaped thing on the server is `fields.plantedAt`, added by
- * `20260712080852_add_planted_at_and_harvests`. No Prisma model, no controller,
- * no DTO.
+ * This file used to say "a PROPOSAL, not a contract". It is the contract now:
+ * every key below was diffed by hand, key by key and type by type, against
+ * `CreatePlantingDto` / `UpdatePlantingDto` in `kumea-api` `7cb03d2` before the
+ * first row existed, and the five `/plantings` routes are live on Railway.
+ * `PlantingRepository` is bound into `Set<SyncableRepository>`.
  *
- * So the field names below are a PROPOSAL, not a contract, and
- * `PlantingRepository` is deliberately NOT bound into `Set<SyncableRepository>`
- * — see the commented-out binding in `di/RepositoryModule.kt`. Pushing at a
- * route that does not exist is a 404, and 404 is not terminal in these
- * repositories, so binding this early would park every planting at the head of
- * the offline queue and re-send it for ever. That is the `kumea_n_received`
- * precedent from KWAP-03, applied for the same reason.
+ * ── THE DIFF MOVED THE SERVER, NOT THIS FILE ────────────────────────────────
  *
- * 🔴 BEFORE BINDING: diff every key below against the server's `CreatePlantingDto`
- * BY HAND, and check the numeric wire types. This project has shipped the same
- * bug three times — `cropType`/`acres`/`useGps` on the Farm, `kept`/`sold` on the
- * Harvest, and `GET /farms` returning Decimal where the client expected a
- * string. Each was a 400 or a parse failure that retried for ever. The API runs
- * `ValidationPipe({ forbidNonWhitelisted: true })`, so one wrong key is not
- * ignored, it is a rejection.
+ * `TICKET-KWAP-03-V2-SERVER.md` recommended `seedKgCenti` / `plantedAreaCenti`
+ * as INTEGER columns carrying JSON numbers. This client sends `seedKg` and
+ * `plantedArea` as decimal STRINGS, and the client was already on a handset, so
+ * the server took these names and these types.
  *
- * Quantities follow the established rule: centi-Longs cross the wire as decimal
- * STRINGS ("1.6"), never JSON numbers — the same contract as harvest quantity,
- * acres and money cents. `seedCostCents` is an integer string of cents, matching
- * `AMOUNT_CENTS_PATTERN` on the notes DTO.
+ * ── THE TWO-DECIMAL RULE IS LOAD-BEARING IN BOTH DIRECTIONS ─────────────────
+ *
+ * Quantities cross as decimal strings ("1.6"), never JSON numbers — the same
+ * contract as harvest quantity, acres and money cents. `seedCostCents` is an
+ * integer string of cents matching `AMOUNT_CENTS_PATTERN` on the notes DTO.
+ *
+ * The SCALE is part of it. `Quantity.parseToCenti` accepts at most TWO decimal
+ * places and `PlantingRepository.pullSince` drops a row it cannot parse, so
+ * `plantings.seed_kg` / `planted_area` are `Decimal(10,2)` serialised
+ * `.toFixed(2)` — deliberately unlike `fields.acres` and `harvests.quantity`,
+ * which are 4 dp. A 4-dp planting would round-trip as "1.6000" and vanish on
+ * every device that pulled it, with no error anywhere.
+ *
+ * 🔴 That is not hypothetical: `harvests.quantity` IS serialised at 4 dp today,
+ * and every harvest the server returns is silently discarded by
+ * `HarvestRepository.pullSince` for exactly this reason. See CLAUDE.md.
  */
 @Serializable
 data class PlantingCreateRequest(

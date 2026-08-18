@@ -96,9 +96,9 @@ open class FakeKumeaApi : KumeaApi {
     ): Response<KumeaNReceivedResponse> = nope()
     override suspend fun deleteKumeaNReceived(id: String): Response<Unit> = nope()
 
-    // KWAP-03-V2 §2.3. Same situation as the Kumea N routes above, one step
-    // earlier: these do not exist on the server at all yet, and
-    // PlantingRepository is not bound into the sync set.
+    // KWAP-03-V2 §2.3. Live since 18 Aug (kumea-api 7cb03d2) and
+    // PlantingRepository is bound into the sync set — a test that exercises a
+    // planting overrides these, like every other endpoint here.
     override suspend fun getPlantings(
         since: String?,
         includeDeleted: Boolean,

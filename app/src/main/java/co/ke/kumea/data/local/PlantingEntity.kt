@@ -43,9 +43,16 @@ import androidx.room.PrimaryKey
  * per acre — the impact report would understate Kumea N on exactly the farms
  * that were most cautious about trying it.
  *
- * ⚠️ DEVICE-ONLY, AND NOT SYNCED YET. There is no `/plantings` resource on the
- * server — see [co.ke.kumea.data.repository.PlantingRepository] and the
- * commented-out binding in `di/RepositoryModule.kt`.
+ * ✅ SYNCED since 18 Aug — `/plantings` is live and
+ * [co.ke.kumea.data.repository.PlantingRepository] is bound into
+ * `Set<SyncableRepository>`.
+ *
+ * ⚠️ EXCEPT the rows `MIGRATION_13_14` backfilled from `fields.plantedAt`. Those
+ * are written `pendingSync = 0`, so `getPendingSync()` never returns them and no
+ * push is ever attempted; their ids are also `'planting-' || fields.id`, which
+ * the server's `@IsUUID('4')` would reject anyway. Zero rows on every handset
+ * checked, so nothing is stranded today — but the backfill is decorative until
+ * that is fixed.
  */
 @Entity(
     tableName = "plantings",
