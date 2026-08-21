@@ -34,19 +34,34 @@ android {
         getByName("androidTest").assets.srcDir("$projectDir/schemas")
     }
 
+    signingConfigs {
+        create("release") {
+            val ks = project.findProperty("KUMEA_RELEASE_KEYSTORE") as String?
+            if (ks != null) {
+                storeFile = file(ks)
+                storePassword = project.findProperty("KUMEA_RELEASE_STORE_PASSWORD") as String
+                keyAlias = project.findProperty("KUMEA_RELEASE_KEY_ALIAS") as String
+                keyPassword = project.findProperty("KUMEA_RELEASE_KEY_PASSWORD") as String
+            }
+        }
+    }
+
     buildTypes {
         debug {
             isMinifyEnabled = false
             buildConfigField("String", "API_BASE_URL", "\"https://kumea-api-production.up.railway.app/\"")
         }
         release {
-            isMinifyEnabled = true
-            isShrinkResources = true
+            // First distributable build ships unminified — ProGuard keep-rules
+            // for Room/Retrofit/Hilt are not yet battle-tested. Re-enable behind
+            // tested rules once field-verified.
+            isMinifyEnabled = false
+            isShrinkResources = false
+            signingConfig = signingConfigs.getByName("release")
             proguardFiles(
                 getDefaultProguardFile("proguard-android-optimize.txt"),
                 "proguard-rules.pro",
             )
-            // TODO: point at production URL once provisioned
             buildConfigField("String", "API_BASE_URL", "\"https://kumea-api-production.up.railway.app/\"")
         }
     }
